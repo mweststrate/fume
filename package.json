@@ -1,0 +1,30 @@
+{
+  "name": "gouda.js",
+  "version": "0.0.0",
+  "description": "Higher Order FRP framework",
+  "main": "dist/gouda.js",
+  "scripts": {
+    "test": "grunt test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mweststrate/gouda.js.git"
+  },
+  "keywords": [
+    "FRP",
+    "reactive",
+    "gouda"
+  ],
+  "author": "Michel Weststrate",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mweststrate/gouda.js/issues"
+  },
+  "devDependencies": {
+    "grunt": "~0.4.5"
+  },
+  "dependencies": {
+    "baconjs": "~0.7.22",
+    "underscore": "~1.7.0"
+  }
+}
