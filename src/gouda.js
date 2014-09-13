@@ -72,17 +72,14 @@ Gouda.Variable = Gouda.util.declare({
     
     init : function(initialValue) {
         this.currentValue = initialValue;
-        var self = this;
-        this.stream = new Bacon.EventStream(function(sink) {
-            //sink(new Bacon.Next(function() { return initialValue;}));
-            self.sink = sink;
-        }).scan(true, _.noop).map(function() {return self.currentValue;});
+        this.bus = new Bacon.Bus();
+        this.stream = this.bus.toProperty(initialValue);
+        this.stream.onValue(_.noop); //make sure there is a listener, otherwise the bus will keep buffering..
     },
 
     set : function(value) {
         this.currentValue = value;
-        if (this.sink)
-            this.sink(new Bacon.Next());
+        this.bus.push(value);
     },
 
     get : function() {

@@ -11,7 +11,8 @@ var b = new G.Variable("never");
 b.set("once");
 var unsub = b.stream.onValue(expect(["once", "another twice"]));
 b.set("another twice");
-//TODO: should work, right? unsub();
+//TODO: should work, right?
+unsub();
 b.stream.onValue(expect(["another twice"]));
 
 console.log("ok");
