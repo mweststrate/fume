@@ -16,4 +16,12 @@ b.set("another twice");
 unsub.dispose();
 b.onValue(expect(["another twice"]));
 
+
+var x = new G.Variable(2);
+
+var z = G.multiply(x, x).subscribe(expect([4,6,9])); //TODO: should be 4, 9
+
+x.set(3);
+
+
 console.log("ok");

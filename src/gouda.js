@@ -13,6 +13,8 @@ if (!Gouda.util)
 // Utilties
 //
 
+Gouda.util.illegalState = function() { throw new Error("IllegalStateException: This code shouldn't be triggered"); };
+
 Gouda.util.declare = function(superclazz, props){
     props = arguments.length == 1 ? superclazz : props;
     superclazz = arguments.length > 1 ? superclazz : Object;
@@ -60,12 +62,14 @@ Gouda.util.expect = function(values, timeout) {
 
 Gouda.makeFunctionArgsObservable = function(func) {
     return function() {
-        func.apply(this, _.map(arguments, Gouda.toObservable));
+        return func.apply(this, _.map(arguments, Gouda.toObservable));
     };
 };
 
 Gouda.toObservable = function(thing) {
-    
+    if (thing instanceof Rx.Observable)
+        return thing;
+    return new Gouda.Variable(thing);
 };
 
 Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
@@ -83,12 +87,12 @@ Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
     },
 
     onValue : function(handler) {
-        return this.subscribe(handler, handler, handler);
+        return this.subscribe(handler, Gouda.util.illegalState, Gouda.util.illegalState);
     }
 });
 
-Gouda.multiple = Gouda.makeFunctionArgsObservable(function(a, b) {
-    return a.combine(b, function(x, y) { return x * y;});
+Gouda.multiply = Gouda.makeFunctionArgsObservable(function(a, b) {
+    return a.combineLatest(b, function(x, y) { return x * y;});
 });
 
 module.exports = Gouda;
