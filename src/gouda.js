@@ -1,5 +1,5 @@
 var _ = require("underscore");
-var Bacon  = require("baconjs");
+var Rx  = require("rx");
 
 // 
 // Set up namespaces
@@ -68,25 +68,24 @@ Gouda.toObservable = function(thing) {
     
 };
 
-Gouda.Variable = Gouda.util.declare({
+Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
     
     init : function(initialValue) {
-        this.currentValue = initialValue;
-        this.bus = new Bacon.Bus();
-        this.stream = this.bus.toProperty(initialValue);
-        this.stream.onValue(_.noop); //make sure there is a listener, otherwise the bus will keep buffering..
+        Rx.BehaviorSubject.call(this, initialValue);
     },
 
     set : function(value) {
-        this.currentValue = value;
-        this.bus.push(value);
+        this.onNext(value);
     },
 
     get : function() {
-        return this.currentValue;
+        return this.value;
+    },
+
+    onValue : function(handler) {
+        return this.subscribe(handler, handler, handler);
     }
 });
-
 
 Gouda.multiple = Gouda.makeFunctionArgsObservable(function(a, b) {
     return a.combine(b, function(x, y) { return x * y;});

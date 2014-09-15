@@ -24,7 +24,7 @@
     "grunt": "~0.4.5"
   },
   "dependencies": {
-    "baconjs": "~0.7.22",
-    "underscore": "~1.7.0"
+    "underscore": "~1.7.0",
+    "rx": "~2.3.9"
   }
 }
