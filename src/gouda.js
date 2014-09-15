@@ -15,22 +15,38 @@ if (!Gouda.util)
 
 Gouda.util.illegalState = function() { throw new Error("IllegalStateException: This code shouldn't be triggered"); };
 
+/**
+    Creates a new constructor (class). 
+    First (optional) argument defines the superclass for the new class. 
+    The second argument defines all the properties and methods of the new class. 
+    The constructor should be called 'init'. 
+    Superclass methods can be invoked by using this.super.methodName.call(this, args..);
+*/
 Gouda.util.declare = function(superclazz, props){
+    if (!superclazz)
+        throw new Error("Super class not defined");
+
     props = arguments.length == 1 ? superclazz : props;
     superclazz = arguments.length > 1 ? superclazz : Object;
 
     //create the constructor function
-    var constructor  = function() {
+    var constructor = function() {
         if (props.init)
             props.init.apply(this, arguments);
     };
 
     //build the prototype
-    constructor.prototype = new superclazz();
+    var proto = constructor.prototype = new superclazz();
+    proto.super = superclazz.prototype;
+    if (!proto.super.init) {
+        proto.super.init = function() {
+            superclazz.apply(this, arguments);
+        };
+    }
 
     //and fill it
     for (var key in props)
-        constructor.prototype[key] = props[key];
+        proto[key] = props[key];
 
     return constructor;
 };
@@ -72,6 +88,10 @@ Gouda.toObservable = function(thing) {
     return new Gouda.Variable(thing);
 };
 
+/**
+    A Variable is a mutable subject that can be listed to for changes. When subscribing, the 
+    lastest value will be pushed immediately to the subscriber
+*/
 Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
     
     init : function(initialValue) {
@@ -88,6 +108,16 @@ Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
 
     onValue : function(handler) {
         return this.subscribe(handler, Gouda.util.illegalState, Gouda.util.illegalState);
+    }
+});
+
+Gouda.AbstractTransformer = Gouda.util.declare(Gouda.Variable, {
+    inputs : null,
+    init : function() {
+        inputs = _.map(Gouda.toObservable); //Todo: wrap in syncing queue
+    },
+    onExecute : function() {
+        throw new Error("onExecute of transformer is not implemented");
     }
 });
 
