@@ -4,7 +4,7 @@ var expect = G.util.expect;
 //Testing classes
 
 var clazzA = G.util.declare({
-	init: function(x) {
+	initialize: function(x) {
 		this.value = x;
 	},
 	getX : function() {
@@ -13,12 +13,13 @@ var clazzA = G.util.declare({
 });
 
 var clazzB = G.util.declare(clazzA, {
-	init : function() {
+	initialize : function($super) {
 		this.value = 2;
-		this.super.init.call(this, 3);
+		$super(3);
+		//this.super.init.call(this, 3);
 	},
-	getX : function() {
-		return this.super.getX.call(this);
+	getX : function($super) {
+		return $super(this);
 	}
 });
 
@@ -27,22 +28,29 @@ if (3 !== b.getX())
 	throw new Error("Failed constructor");
 if (3 !== b.value)
 	throw new Error("Failed value");
+if (!(b instanceof clazzB))
+	throw new Error("Failed instanceof B");
+if (!(b instanceof clazzA))
+	throw new Error("Failed instanceof A");
 
 // Testing variables
 
 var a = new G.Variable("once");
-a.onValue(expect(["once", "twice", "second twice"]));
+a.subscribe(expect(["once", "twice", "second twice"]));
 a.set("twice");
-a.onValue(expect(["twice", "second twice"]));
+a.subscribe(expect(["twice", "second twice"]));
 a.set("second twice");
 
 var b = new G.Variable("never");
 b.set("once");
-var unsub = b.onValue(expect(["once", "another twice"]));
+var unsub = b.subscribe(expect(["once", "another twice"]));
 b.set("another twice");
-//TODO: should work, right?
+var unsub2 = b.subscribe(expect(["another twice","third"]));
 unsub.dispose();
-b.onValue(expect(["another twice"]));
+b.set("third");
+unsub2.dispose();
+if (!b.isDisposed)
+	throw new Error("Should be disposed");
 
 
 
