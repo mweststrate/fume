@@ -136,6 +136,99 @@ Gouda.toObservable = function(thing) {
     return new Gouda.Variable(thing); //Todo or Observable.just?
 };
 
+/*
+    Observable.transform = transform with unshift this.
+
+    function transform(args, func) {
+        var innerResult = new Variable;
+
+        var innerArgs = args.accumelateEvents();
+        innerArgs.map(arg, idx) {
+            var disp = args.subscribe(function(changes) {
+                innerResult.markUnstable();
+                //wait for all args to be stable; combineLatest
+
+                apply func
+                innerResult.markStable();
+            })
+
+            innerResult.registerDisposable(disp);
+        }
+
+        return innerResult
+        .distinctUntilChanged
+        .accumelateEvents()
+        .detectCycles()
+    }
+*/
+
+/**
+  Gouda base subject is very similar to Rx.Subject, with the difference that it automatically disposes
+  after the last listener has left. It will then also stop observing any observables it is listening to.
+  (if the disposable is stored by using this.registerDisposable)
+*/
+Gouda.BaseSubject = Gouda.util.declare(Rx.Subject, {
+
+    disposables : null,
+    exception : null,
+
+    initialize : function($super) {
+        debugger;
+        $super();
+        this.disposables = [];
+    },
+
+    subscribe : function(subscriber) {
+        if (this.isDisposed)
+            throw new Error("Already disposed");
+
+        if (this.exception) {
+            subscriber.onError(this.exception);
+            return Rx.Disposable.empty;
+        }
+        else if (this.isStopped) {
+            subscriber.onCompleted();
+            return Rx.Disposable.empty;
+        }
+        else {
+            var self = this;
+            this.observers.push(subscriber);
+            return {
+                dispose : function() {
+                    self.unsubcribe(subscriber);
+                }
+            };
+        }
+    },
+
+    unsubcribe : function(subscriber) {
+        if (this.observers) {
+            var idx = this.observers.indexOf(subscriber);
+            if (idx !== -1) {
+                this.observers.splice(idx, 1);
+
+                //nobody listening anyore?
+                if (this.observers.length === 0)
+                    this.dispose();
+            }
+        }
+    },
+
+    registerDisposable : function(disposable) {
+        this.disposables.push(disposable);
+    },
+
+    dispose : function($super) {
+        if (!this.isDisposed) {
+            $super();
+            _.each(this.disposables, function(disposable) {
+                disposable.dispose();
+            });
+            this.disposables = null;
+        }
+    }
+});
+
 /**
     A Variable is a mutable subject that can be listed to for changes. When subscribing, the
     lastest value will be pushed immediately to the subscriber
@@ -165,7 +258,7 @@ Gouda.Variable = Gouda.util.declare(Gouda.BaseSubject, {
     },
 });
 
-Gouda.AbstractTransformer = Gouda.util.declare(/*Gouda.Variable,*/ {
+Gouda.AbstractTransformer = Gouda.util.declare(Gouda.Variable, {
     inputs : null,
     initialize : function() {
         inputs = _.map(Gouda.toObservable); //Todo: wrap in syncing queue
