@@ -112,7 +112,7 @@ Gouda.util.expect = function(values, timeout) {
         }
     }, timeout);
 
-    return function(value) {
+    return Rx.Observer.create(function(value) {
         console.log(">> " + value);
         if (done < values.length && values[done] != value)
             throw new Error("Test failed, expected '" + values[done] + "', found: '" + value + "'");
@@ -121,7 +121,7 @@ Gouda.util.expect = function(values, timeout) {
             clearTimeout(timeoutHandle);
         else if (done > values.length)
             throw new Error("Test failed: callback was called to often. Latest value: " + value);
-    };
+    }, console.error, console.log);
 };
 
 Gouda.makeFunctionArgsObservable = function(func) {
@@ -133,35 +133,41 @@ Gouda.makeFunctionArgsObservable = function(func) {
 Gouda.toObservable = function(thing) {
     if (thing instanceof Rx.Observable)
         return thing;
-    return new Gouda.Variable(thing);
+    return new Gouda.Variable(thing); //Todo or Observable.just?
 };
 
 /**
-    A Variable is a mutable subject that can be listed to for changes. When subscribing, the 
+    A Variable is a mutable subject that can be listed to for changes. When subscribing, the
     lastest value will be pushed immediately to the subscriber
 */
-Gouda.Variable = Gouda.util.declare(Rx.BehaviorSubject, {
-    
-    init : function(initialValue) {
-        Rx.BehaviorSubject.call(this, initialValue);
+Gouda.Variable = Gouda.util.declare(Gouda.BaseSubject, {
+    value : undefined,
+
+    initialize : function($super, initialValue) {
+        $super();
+        this.value = initialValue;
+    },
+
+    subscribe : function($super, subscriber) {
+        console.log(subscriber);
+        if (!this.isStopped && !this.exception)
+            subscriber.onNext(this.value);
+        return $super(subscriber);
     },
 
     set : function(value) {
+        this.value = value;
         this.onNext(value);
     },
 
     get : function() {
         return this.value;
     },
-
-    onValue : function(handler) {
-        return this.subscribe(handler, Gouda.util.illegalState, Gouda.util.illegalState);
-    }
 });
 
-Gouda.AbstractTransformer = Gouda.util.declare(Gouda.Variable, {
+Gouda.AbstractTransformer = Gouda.util.declare(/*Gouda.Variable,*/ {
     inputs : null,
-    init : function() {
+    initialize : function() {
         inputs = _.map(Gouda.toObservable); //Todo: wrap in syncing queue
     },
     onExecute : function() {
