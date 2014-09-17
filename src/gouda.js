@@ -15,40 +15,88 @@ if (!Gouda.util)
 
 Gouda.util.illegalState = function() { throw new Error("IllegalStateException: This code shouldn't be triggered"); };
 
+Gouda.util.extractFunctionArgumentNames = function(fn) {
+    //http://stackoverflow.com/a/14660057
+    return fn.toString()
+    .replace(/((\/\/.*$)|(\/\*[\s\S]*?\*\/)|(\s))/mg,'')
+    .match(/^function\s*[^\(]*\(\s*([^\)]*)\)/m)[1]
+    .split(/,/);
+};
+
 /**
-    Creates a new constructor (class). 
-    First (optional) argument defines the superclass for the new class. 
-    The second argument defines all the properties and methods of the new class. 
-    The constructor should be called 'init'. 
-    Superclass methods can be invoked by using this.super.methodName.call(this, args..);
+    Creates a new constructor (class).
+    First (optional) argument defines the superclass for the new class.
+    The second argument defines all the properties and methods of the new class.
+    The constructor should be called 'initialize'.
+
+    Superclass methods can be invoked by naming the first parameter of a function `$super`.
+    The (bound) super implementation well then be injected to the function and can be called.
+
+    Declare has three important base properties
+    - it is easy to invoke super methods
+    - works well with superclasses that are not defined by the same system
+    - super constructors can be used, but are not called automatically
+    - stand alone and small: TODO: make own package for declare
 */
 Gouda.util.declare = function(superclazz, props){
     if (!superclazz)
         throw new Error("Super class not defined");
+    var slice = Array.prototype.slice;
 
+    /*
+        make arguments uniform
+    */
     props = arguments.length == 1 ? superclazz : props;
     superclazz = arguments.length > 1 ? superclazz : Object;
 
-    //create the constructor function
-    var constructor = function() {
-        if (props.init)
-            props.init.apply(this, arguments);
-    };
-
-    //build the prototype
-    var proto = constructor.prototype = new superclazz();
-    proto.super = superclazz.prototype;
-    if (!proto.super.init) {
-        proto.super.init = function() {
-            superclazz.apply(this, arguments);
+    /*
+        find the class initializer and inject '$super' if necessary
+    */
+    var clazzConstructor = props.initialize || _.noop;
+    if (Gouda.util.extractFunctionArgumentNames(clazzConstructor)[0] === "$super") {
+        var baseClazzConstructor = clazzConstructor;
+        clazzConstructor = function() {
+            baseClazzConstructor.apply(this, [_.bind(superclazz, this)].concat(slice.call(arguments)));
         };
     }
 
-    //and fill it
-    for (var key in props)
-        proto[key] = props[key];
+    /*
+        setup the prototype chain
+    */
+    var proto = clazzConstructor.prototype = new superclazz();
 
-    return constructor;
+    /*
+        remove any internal state from the prototype so that it is not accidentally shared.
+        If a subclass is dependent on internal state, it should call the super constractor in
+        it's initialize section
+    */
+    for(var key in proto) if (proto.hasOwnProperty(key))
+        delete proto[key];
+
+    proto.constructor = clazzConstructor; //weird flaw in JS, if you set up a prototype, restore constructor ref afterwards
+    var superproto = superclazz.prototype;
+
+    /*
+        fill the prototype
+    */
+    _.each(props, function(member, key) {
+        if (key  === 'initialize' || !props.hasOwnProperty(key))
+            return;
+        else if (_.isFunction(member) && Gouda.util.extractFunctionArgumentNames(member)[0] === "$super") {
+            var supermethod = superproto[key];
+            if (!supermethod || !_.isFunction(supermethod))
+                throw new Error("No super method found for '" + key + "'");
+
+            proto[key] = function() {
+                return member.apply(this, [_.bind(supermethod, this)].concat(slice.call(arguments)));
+            };
+        }
+        else {
+            proto[key] = member;
+        }
+    });
+
+    return clazzConstructor;
 };
 
 Gouda.util.expect = function(values, timeout) {
