@@ -1,24 +1,24 @@
 {
-  "name": "gouda.js",
+  "name": "fume",
   "version": "0.0.0",
   "description": "Higher Order FRP framework",
-  "main": "dist/gouda.js",
+  "main": "dist/fume.js",
   "scripts": {
     "test": "grunt test"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mweststrate/gouda.js.git"
+    "url": "https://github.com/mweststrate/fume.git"
   },
   "keywords": [
     "FRP",
     "reactive",
-    "gouda"
+    "fume"
   ],
   "author": "Michel Weststrate",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mweststrate/gouda.js/issues"
+    "url": "https://github.com/mweststrate/fume/issues"
   },
   "devDependencies": {
     "grunt": "~0.4.5"

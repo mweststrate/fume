@@ -6,21 +6,21 @@ var clutility = require("clutility");
 // Set up namespaces
 //
 
-var Gouda = Gouda || {};
+var Fume = Gouda || {};
 
 //
 // Utilties
 //
-Gouda.util = {};
+Fume.util = {};
 
-Gouda.util.illegalState = function(msg) {
+Fume.util.illegalState = function(msg) {
     msg = msg || "This code shouldn't be triggered";
     throw new Error("IllegalStateException: " + msg);
 };
 /*
-Gouda.util.expect = function(values, timeout) {
+Fume.util.expect = function(values, timeout) {
     if (!_.isArray(values))
-        return Gouda.util.expect([values], timeout);
+        return Fume.util.expect([values], timeout);
 
     timeout = timeout || 1000;
     var done = 0;
@@ -49,7 +49,7 @@ Gouda.util.expect = function(values, timeout) {
 // Events
 //
 
-var Event = Gouda.Event = clutility({
+var Event = Fume.Event = clutility({
     initialize : function(type, props) {
         this.type = type;
         if (props)
@@ -82,10 +82,10 @@ Event.Value = function(value) {
 };
 
 /**
-    Observable is a stream that might push values to all its subscribers until the Gouda.Event.Stop is propagated.
+    Observable is a stream that might push values to all its subscribers until the Fume.Event.Stop is propagated.
 
 */
-var Observable = Gouda.Observable = clutility({
+var Observable = Fume.Observable = clutility({
 
     /*
         Create a new observable.
@@ -104,11 +104,11 @@ var Observable = Gouda.Observable = clutility({
         On subscribing, the current state of this (to be determined by @see getState), will be pushed to the observable
 
         @param {Observer} observable.
-        @returns {Disposable} disposable object. Call the @see Gouda.Disposable#dispose function to stop listening to this observer
+        @returns {Disposable} disposable object. Call the @see Fume.Disposable#dispose function to stop listening to this observer
     */
     subscribe : function(observer) {
         if (this.isStopped)
-            Gouda.util.illegalState(this + ": cannot perform 'subscribe'; already stopped.");
+            Fume.util.illegalState(this + ": cannot perform 'subscribe'; already stopped.");
 
         this.observersIdx += 1;
         this.observers[this.observersIdx] = observer;
@@ -121,7 +121,7 @@ var Observable = Gouda.Observable = clutility({
             isDisposed : false,
             dispose : function(){
                 if (this.isDisposed)
-                    Gouda.util.illegalState();
+                    Fume.util.illegalState();
                 this.isDisposed = true;
                 observing.unsubcribe(this);
             }
@@ -163,7 +163,7 @@ var Observable = Gouda.Observable = clutility({
     */
     next : function(value) {
         if (this.isStopped)
-            Gouda.util.illegalState(this + ": cannot perform 'next'; already stopped");
+            Fume.util.illegalState(this + ": cannot perform 'next'; already stopped");
         for(var key in this.observers)
             this.observers[key].onNext(value);
     },
@@ -188,19 +188,19 @@ Observable.fromValue = function(value) {
     return new Constant(value); //TODO: list, record, error, function...
 };
 
-var Disposable = Gouda.Disposable = clutility({
+var Disposable = Fume.Disposable = clutility({
     dispose : function() {
         //stub
     }
 });
 
-var Observer = Gouda.Observer = clutility({
+var Observer = Fume.Observer = clutility({
     onNext : function(value) {
         //Just a stub
     }
 });
 
-var Pipe = Gouda.Pipe = clutility(Observable, {
+var Pipe = Fume.Pipe = clutility(Observable, {
 
     initialize : function($super, observable, autoClose){
         $super(autoClose);
@@ -214,7 +214,7 @@ var Pipe = Gouda.Pipe = clutility(Observable, {
 
     onNext : function(event) {
         if (this.isFiring)
-            Gouda.util.IllegalStateException(this + " cannot perform onNext: event cycle detected");
+            Fume.util.IllegalStateException(this + " cannot perform onNext: event cycle detected");
         this.isFiring =true;
 
         if (event.isStop())
@@ -249,7 +249,7 @@ var Pipe = Gouda.Pipe = clutility(Observable, {
 
     listenTo : function(observable) {
         if (this.isStopped)
-            Gouda.util.illegalState(this + ": cannot perform 'listenTo', already stopped");
+            Fume.util.illegalState(this + ": cannot perform 'listenTo', already stopped");
 
         observable = Observable.fromValue(observable);
         if (observable != this.observing && !Constant.equals(observable, this.observing)) {
@@ -261,7 +261,7 @@ var Pipe = Gouda.Pipe = clutility(Observable, {
     }
 });
 
-var Constant = Gouda.Constant = clutility(Gouda.Observable, {
+var Constant = Fume.Constant = clutility(Gouda.Observable, {
     initialize : function($super, value) {
         $super(false);
         this.value = value;
@@ -277,7 +277,7 @@ Constant.equals = function(left, right) {
     return left instanceof Constant && right instanceof Constant && left.value === right.value;
 };
 
-Gouda.ValueBuffer = clutility({
+Fume.ValueBuffer = clutility({
     initialize : function() {
         this.reset();
     },
@@ -324,23 +324,23 @@ Gouda.ValueBuffer = clutility({
 
     Fires all queued events just before becoming stable.
 */
-Gouda.OptimizingPipe = null;
+Fume.OptimizingPipe = null;
 
 /**
     An observable that accepts multiple incoming streams, and zips them into a single stream that only fires when
     either all input streams are stable or one stream has an error and is stable
 */
-Gouda.SyncingStream = null;
+Fume.SyncingStream = null;
 
-Gouda.Transformer = clutility({
+Fume.Transformer = clutility({
     initialize : function($super, func /*args*/) {
         $super();
         /* Pseudo:
         inputargs = arguments.slice(2);
         optimizedArgs = _.map(inputargs, function(arg) {
-            return new Gouda.OptimizingStream(arg);
+            return new Fume.OptimizingStream(arg);
         });
-        syncedArgs = new Gouda.SyncingStream(optimizedArgs);
+        syncedArgs = new Fume.SyncingStream(optimizedArgs);
 
         result = syncedArgs.map(function(x) {
             if (isError(x) || isDirty(x) || isStable(x))
@@ -354,7 +354,7 @@ Gouda.Transformer = clutility({
 });
 
 /*
-Gouda.multiply = clutility(Gouda.Transformer, {
+Fume.multiply = clutility(Gouda.Transformer, {
     initialize : function($super, left, right) {
         $super(function(x, y) {
             return x * y;
@@ -363,4 +363,4 @@ Gouda.multiply = clutility(Gouda.Transformer, {
 });
 */
 
-module.exports = Gouda;
+module.exports = Fume;
