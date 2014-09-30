@@ -1,13 +1,14 @@
-var Gouda = require("./../src/gouda.js");
-var G = Gouda;
+var Fume = require("./../src/fume.js");
+var G = Fume;
 var expect = G.util.expect;
 
 exports.testObservable1 = function(test) {
-	var source = new Gouda.Observable(true);
-	test.fail(source.isStopped);
+	var source = new Fume.Observable(true);
+	test.ok(!source.isStopped);
+	test.ok(!source.hasObservers());
 
 	var x;
-	var target = new Gouda.Observer();
+	var target = new Fume.Observer();
 	target.onNext = function(y) {
 		x = y;
 	};
@@ -22,17 +23,17 @@ exports.testObservable1 = function(test) {
 	test.equals(4, x);
 
 	sub.dispose();
-	test.fail(source.hasObservers());
+	test.ok(!source.hasObservers());
 	test.ok(source.isStopped);
 
 	test.done();
 };
 
 exports.testObservable2 = function(test) {
-	var source = new Gouda.Observable(false);
+	var source = new Fume.Observable(false);
 
 	var x;
-	var target = new Gouda.Observer();
+	var target = new Fume.Observer();
 	target.onNext = function(y) {
 		x = y;
 	};
@@ -40,7 +41,7 @@ exports.testObservable2 = function(test) {
 	var sub = source.subscribe(target);
 
 	source.stop();
-	test.fail(source.hasObservers());
+	test.ok(!source.hasObservers());
 	test.ok(source.isStopped);
 	test.ok(x.isStop());
 
@@ -49,8 +50,8 @@ exports.testObservable2 = function(test) {
 
 // Testing variables
 /*exports.*/testvars = function(test) {
-	var b = new Gouda.ValueBuffer();
-	var b2 = new Gouda.ValueBuffer();
+	var b = new Fume.ValueBuffer();
+	var b2 = new Fume.ValueBuffer();
 
 	var a = new G.Pipe("once");
 	a.subscribe(b);

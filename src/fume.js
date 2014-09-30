@@ -6,7 +6,7 @@ var clutility = require("clutility");
 // Set up namespaces
 //
 
-var Fume = Gouda || {};
+var Fume = Fume || {};
 
 //
 // Utilties
@@ -132,7 +132,7 @@ var Observable = Fume.Observable = clutility({
         @private
     */
     unsubcribe : function(disposable) {
-         delete this.observers[this.observerId];
+         delete this.observers[disposable.observerId];
          if (this.autoClose && !this.hasObservers())
             this.stop();
     },
@@ -261,7 +261,7 @@ var Pipe = Fume.Pipe = clutility(Observable, {
     }
 });
 
-var Constant = Fume.Constant = clutility(Gouda.Observable, {
+var Constant = Fume.Constant = clutility(Fume.Observable, {
     initialize : function($super, value) {
         $super(false);
         this.value = value;
@@ -354,7 +354,7 @@ Fume.Transformer = clutility({
 });
 
 /*
-Fume.multiply = clutility(Gouda.Transformer, {
+Fume.multiply = clutility(Fume.Transformer, {
     initialize : function($super, left, right) {
         $super(function(x, y) {
             return x * y;
