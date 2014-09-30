@@ -106,16 +106,14 @@ var Observable = Gouda.Observable = clutility({
         @param {Observer} observable.
         @returns {Disposable} disposable object. Call the @see Gouda.Disposable#dispose function to stop listening to this observer
     */
-    subscribe : function(observable) {
+    subscribe : function(observer) {
         if (this.isStopped)
             Gouda.util.illegalState(this + ": cannot perform 'subscribe'; already stopped.");
 
         this.observersIdx += 1;
-        this.observers[this.observersIdx] = observable;
+        this.observers[this.observersIdx] = observer;
 
-        var currentState = this.getState();
-        if (currentState) for(var i = 0, l = currentState.length; i < l; i++)
-            observable.next(currentState[i]);
+        this.replay(observer);
 
         var observing = this;
         return {
@@ -134,7 +132,7 @@ var Observable = Gouda.Observable = clutility({
         @private
     */
     unsubcribe : function(disposable) {
-         delete observing.observers[this.observerId];
+         delete this.observers[this.observerId];
          if (this.autoClose && !this.hasObservers())
             this.stop();
     },
@@ -143,7 +141,7 @@ var Observable = Gouda.Observable = clutility({
         Returns whether any observers are listening to this observable
     */
     hasObservers : function() {
-        for(var key in this.observers)
+        if (this.observers) for(var key in this.observers)
             return true;
         return false;
     },
@@ -184,6 +182,12 @@ var Observable = Gouda.Observable = clutility({
     }
 });
 
+Observable.fromValue = function(value) {
+    if (value instanceof Observable)
+        return value;
+    return new Constant(value); //TODO: list, record, error, function...
+};
+
 var Disposable = Gouda.Disposable = clutility({
     dispose : function() {
         //stub
@@ -200,6 +204,8 @@ var Pipe = Gouda.Pipe = clutility(Observable, {
 
     initialize : function($super, observable, autoClose){
         $super(autoClose);
+
+        observable = Observable.fromValue(observable);
         this.dirtyCount = 0;
         this.isFiring = false;
         this.observing = observable;
@@ -245,11 +251,12 @@ var Pipe = Gouda.Pipe = clutility(Observable, {
         if (this.isStopped)
             Gouda.util.illegalState(this + ": cannot perform 'listenTo', already stopped");
 
+        observable = Observable.fromValue(observable);
         if (observable != this.observing && !Constant.equals(observable, this.observing)) {
             this.subscription.dispose();
-            this.subscription = observable.subscribe();
+
             this.observing = observable;
-            observable.replay(this);
+            this.subscription = observable.subscribe(this);
         }
     }
 });
@@ -260,9 +267,9 @@ var Constant = Gouda.Constant = clutility(Gouda.Observable, {
         this.value = value;
     },
     replay : function(observer) {
-        observer.onNext(Gouda.Event.Dirty);
-        observer.onNext(new Gouda.Event.Value(this.value));
-        observer.onNext(Gouda.Event.Ready);
+        observer.onNext(Event.Dirty());
+        observer.onNext(Event.Value(this.value));
+        observer.onNext(Event.Ready());
     }
 });
 
@@ -270,29 +277,19 @@ Constant.equals = function(left, right) {
     return left instanceof Constant && right instanceof Constant && left.value === right.value;
 };
 
-Gouda.Buffer = clutility({
+Gouda.ValueBuffer = clutility({
     initialize : function() {
         this.reset();
     },
     onNext : function(x) {
-        this.buffer.push(x);
+        if (x.isValue())
+            this.buffer.push(x.value);
     },
     reset : function() {
         this.buffer = [];
     }
 });
 
-Gouda.makeFunctionArgsObservable = function(func) {
-    return function() {
-        return func.apply(this, _.map(arguments, Gouda.toObservable));
-    };
-};
-
-Gouda.toObservable = function(thing) {
-    if (thing instanceof Rx.Observable)
-        return thing;
-    return new Gouda.Variable(thing); //Todo or Observable.just?
-};
 
 /*
     Observable.transform = transform with unshift this.
@@ -320,77 +317,6 @@ Gouda.toObservable = function(thing) {
     }
 */
 
-/**
-  Gouda base subject is very similar to Rx.Subject, with the difference that it automatically disposes
-  after the last listener has left. It will then also stop observing any observables it is listening to.
-  (if the disposable is stored by using this.registerDisposable)
-*/
-Gouda.BaseSubject = clutility(Rx.Subject, {
-
-    disposables : null,
-    exception : null,
-
-    initialize : function($super) {
-        $super();
-        this.disposables = [];
-    },
-
-    subscribe : function(subscriber) {
-        if (this.isDisposed)
-            throw new Error("Already disposed");
-
-        if (this.exception) {
-            subscriber.onError(this.exception);
-            return Rx.Disposable.empty;
-        }
-        else if (this.isStopped) {
-            subscriber.onCompleted();
-            return Rx.Disposable.empty;
-        }
-        else {
-            var self = this;
-            this.observers.push(subscriber);
-            return {
-                dispose : function() {
-                    self.unsubcribe(subscriber);
-                }
-            };
-        }
-    },
-
-    unsubcribe : function(subscriber) {
-        if (this.observers) {
-            var idx = this.observers.indexOf(subscriber);
-            if (idx !== -1) {
-                this.observers.splice(idx, 1);
-
-                //nobody listening anyore?
-                if (this.observers.length === 0)
-                    this.dispose();
-            }
-        }
-    },
-
-    registerDisposable : function(disposable) {
-        this.disposables.push(disposable);
-    },
-
-    dispose : function($super) {
-        if (!this.isDisposed) {
-            $super();
-            _.each(this.disposables, function(disposable) {
-                disposable.dispose();
-            });
-            this.disposables = null;
-        }
-    }
-});
-
-/**
-    A subject that, whenever a new observer is registered, sends a sequence of events to this observer in
-    order to get the state of this observer up to data as quickly as possible
-*/
-Gouda.ReplayableStream = null;
 
 /**
     An observable that, between the dirty and stable state, queues and optimizes all incoming events, by
@@ -398,7 +324,7 @@ Gouda.ReplayableStream = null;
 
     Fires all queued events just before becoming stable.
 */
-Gouda.OptimizingStream = null;
+Gouda.OptimizingPipe = null;
 
 /**
     An observable that accepts multiple incoming streams, and zips them into a single stream that only fires when
@@ -436,49 +362,5 @@ Gouda.multiply = clutility(Gouda.Transformer, {
     }
 });
 */
-
-
-/**
-    A Variable is a mutable subject that can be listed to for changes. When subscribing, the
-    lastest value will be pushed immediately to the subscriber
-*/
-Gouda.Variable = clutility(Gouda.BaseSubject, {
-    value : undefined,
-
-    initialize : function($super, initialValue) {
-        $super();
-        this.value = initialValue;
-    },
-
-    subscribe : function($super, subscriber) {
-        console.log(subscriber);
-        if (!this.isStopped && !this.exception)
-            subscriber.onNext(this.value);
-        return $super(subscriber);
-    },
-
-    set : function(value) {
-        this.value = value;
-        this.onNext(value);
-    },
-
-    get : function() {
-        return this.value;
-    },
-});
-
-Gouda.AbstractTransformer = clutility(Gouda.Variable, {
-    inputs : null,
-    initialize : function() {
-        inputs = _.map(Gouda.toObservable); //Todo: wrap in syncing queue
-    },
-    onExecute : function() {
-        throw new Error("onExecute of transformer is not implemented");
-    }
-});
-
-Gouda.multiply = Gouda.makeFunctionArgsObservable(function(a, b) {
-    return a.combineLatest(b, function(x, y) { return x * y;});
-});
 
 module.exports = Gouda;
