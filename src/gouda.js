@@ -1,104 +1,23 @@
-var _ = require("underscore");
+var _ = require("lodash");
 var Rx  = require("rx");
+var clutility = require("clutility");
 
 //
 // Set up namespaces
 //
 
 var Gouda = Gouda || {};
-if (!Gouda.util)
-    Gouda.util = {};
 
 //
 // Utilties
 //
+Gouda.util = {};
 
-Gouda.util.illegalState = function() { throw new Error("IllegalStateException: This code shouldn't be triggered"); };
-
-Gouda.util.extractFunctionArgumentNames = function(fn) {
-    //http://stackoverflow.com/a/14660057
-    return fn.toString()
-    .replace(/((\/\/.*$)|(\/\*[\s\S]*?\*\/)|(\s))/mg,'')
-    .match(/^function\s*[^\(]*\(\s*([^\)]*)\)/m)[1]
-    .split(/,/);
+Gouda.util.illegalState = function(msg) {
+    msg = msg || "This code shouldn't be triggered";
+    throw new Error("IllegalStateException: " + msg);
 };
-
-/**
-    Creates a new constructor (class).
-    First (optional) argument defines the superclass for the new class.
-    The second argument defines all the properties and methods of the new class.
-    The constructor should be called 'initialize'.
-
-    Superclass methods can be invoked by naming the first parameter of a function `$super`.
-    The (bound) super implementation well then be injected to the function and can be called.
-
-    Declare has three important base properties
-    - it is easy to invoke super methods
-    - works well with superclasses that are not defined by the same system
-    - super constructors can be used, but are not called automatically
-    - stand alone and small: TODO: make own package for declare
-*/
-Gouda.util.declare = function(superclazz, props){
-    if (!superclazz)
-        throw new Error("Super class not defined");
-    var slice = Array.prototype.slice;
-
-    /*
-        make arguments uniform
-    */
-    props = arguments.length == 1 ? superclazz : props;
-    superclazz = arguments.length > 1 ? superclazz : Object;
-
-    /*
-        find the class initializer and inject '$super' if necessary
-    */
-    var clazzConstructor = props.initialize || _.noop;
-    if (Gouda.util.extractFunctionArgumentNames(clazzConstructor)[0] === "$super") {
-        var baseClazzConstructor = clazzConstructor;
-        clazzConstructor = function() {
-            baseClazzConstructor.apply(this, [_.bind(superclazz, this)].concat(slice.call(arguments)));
-        };
-    }
-
-    /*
-        setup the prototype chain
-    */
-    var proto = clazzConstructor.prototype = new superclazz();
-
-    /*
-        remove any internal state from the prototype so that it is not accidentally shared.
-        If a subclass is dependent on internal state, it should call the super constractor in
-        it's initialize section
-    */
-    for(var key in proto) if (proto.hasOwnProperty(key))
-        delete proto[key];
-
-    proto.constructor = clazzConstructor; //weird flaw in JS, if you set up a prototype, restore constructor ref afterwards
-    var superproto = superclazz.prototype;
-
-    /*
-        fill the prototype
-    */
-    _.each(props, function(member, key) {
-        if (key  === 'initialize' || !props.hasOwnProperty(key))
-            return;
-        else if (_.isFunction(member) && Gouda.util.extractFunctionArgumentNames(member)[0] === "$super") {
-            var supermethod = superproto[key];
-            if (!supermethod || !_.isFunction(supermethod))
-                throw new Error("No super method found for '" + key + "'");
-
-            proto[key] = function() {
-                return member.apply(this, [_.bind(supermethod, this)].concat(slice.call(arguments)));
-            };
-        }
-        else {
-            proto[key] = member;
-        }
-    });
-
-    return clazzConstructor;
-};
-
+/*
 Gouda.util.expect = function(values, timeout) {
     if (!_.isArray(values))
         return Gouda.util.expect([values], timeout);
@@ -123,6 +42,245 @@ Gouda.util.expect = function(values, timeout) {
             throw new Error("Test failed: callback was called to often. Latest value: " + value);
     }, console.error, console.log);
 };
+*/
+
+
+//
+// Events
+//
+
+var Event = Gouda.Event = clutility({
+    initialize : function(type, props) {
+        this.type = type;
+        if (props)
+            _.extend(this, props);
+    },
+    isStop : function() {
+        return this.type == "STOP";
+    },
+    isDirty : function() {
+        return this.type == "DIRTY";
+    },
+    isReady : function() {
+        return this.type == "READY";
+    },
+    isValue : function() {
+        return this.type == "VALUE";
+    }
+});
+Event.Stop = function() {
+    return new Event("STOP");
+};
+Event.Dirty = function() {
+    return new Event("DIRTY");
+};
+Event.Ready = function() {
+    return new Event("READY");
+};
+Event.Value = function(value) {
+    return new Event("VALUE", { value : value });
+};
+
+/**
+    Observable is a stream that might push values to all its subscribers until the Gouda.Event.Stop is propagated.
+
+*/
+var Observable = Gouda.Observable = clutility({
+
+    /*
+        Create a new observable.
+        @param {Boolean} autoClose: automatically stop this observer if the last observable has left
+    */
+    initialize : function(autoClose) {
+        this.autoClose = autoClose;
+        this.isStopped = false;
+        this.observersIdx = 0;
+        this.observers = {};
+    },
+
+    /*
+        Subscribes an observer to this observable
+        observables should implement the 'onNext(value)' method.
+        On subscribing, the current state of this (to be determined by @see getState), will be pushed to the observable
+
+        @param {Observer} observable.
+        @returns {Disposable} disposable object. Call the @see Gouda.Disposable#dispose function to stop listening to this observer
+    */
+    subscribe : function(observable) {
+        if (this.isStopped)
+            Gouda.util.illegalState(this + ": cannot perform 'subscribe'; already stopped.");
+
+        this.observersIdx += 1;
+        this.observers[this.observersIdx] = observable;
+
+        var currentState = this.getState();
+        if (currentState) for(var i = 0, l = currentState.length; i < l; i++)
+            observable.next(currentState[i]);
+
+        var observing = this;
+        return {
+            observerId : this.observersIdx,
+            isDisposed : false,
+            dispose : function(){
+                if (this.isDisposed)
+                    Gouda.util.illegalState();
+                this.isDisposed = true;
+                observing.unsubcribe(this);
+            }
+        };
+    },
+
+    /*
+        @private
+    */
+    unsubcribe : function(disposable) {
+         delete observing.observers[this.observerId];
+         if (this.autoClose && !this.hasObservers())
+            this.stop();
+    },
+
+    /*
+        Returns whether any observers are listening to this observable
+    */
+    hasObservers : function() {
+        for(var key in this.observers)
+            return true;
+        return false;
+    },
+
+    /*
+        Returns the current state of this observer in as few events as possible.
+        When a new observer subscribes to this observable, the current state will be pushed
+        to the observer, to get it in sync with all other observers.
+
+        @param {Observer} observer Observer that should receives the initial state.
+    */
+    replay : function(observer) {
+        //sub
+    },
+
+    /*
+        @private
+        Use this method to push a value to all observers of this observable
+    */
+    next : function(value) {
+        if (this.isStopped)
+            Gouda.util.illegalState(this + ": cannot perform 'next'; already stopped");
+        for(var key in this.observers)
+            this.observers[key].onNext(value);
+    },
+
+    /*
+        Stops this observable from emitting events.
+        Will distribute the Stop event to all its subscribers
+    */
+    stop : function() {
+        if (this.isStopped)
+            return;
+        if (this.hasObservers())
+            this.next(Event.Stop());
+        this.isStopped = true;
+        this.observers = null;
+    }
+});
+
+var Disposable = Gouda.Disposable = clutility({
+    dispose : function() {
+        //stub
+    }
+});
+
+var Observer = Gouda.Observer = clutility({
+    onNext : function(value) {
+        //Just a stub
+    }
+});
+
+var Pipe = Gouda.Pipe = clutility(Observable, {
+
+    initialize : function($super, observable, autoClose){
+        $super(autoClose);
+        this.dirtyCount = 0;
+        this.isFiring = false;
+        this.observing = observable;
+        this.subscription = observable.subscribe(this);
+    },
+
+    onNext : function(event) {
+        if (this.isFiring)
+            Gouda.util.IllegalStateException(this + " cannot perform onNext: event cycle detected");
+        this.isFiring =true;
+
+        if (event.isStop())
+            this.stop();
+        else if (event.isDirty()) {
+            if (!this.dirtyCount)
+                this.next(event); //push dirty
+            this.dirtyCount += 1;
+        }
+        else if (event.isReady()) {
+            this.dirtyCount -= 1;
+            if (!this.dirtyCount)
+                this.next(event); //push ready
+        }
+        else {
+            this.next(event);
+        }
+        this.isFiring = false;
+    },
+
+    stop : function($super) {
+        $super();
+        if (this.subscription) {
+            this.subscription.dispose();
+            this.subscription = null;
+        }
+    },
+
+    replay : function(observer) {
+        this.observing.replay(observer);
+    },
+
+    listenTo : function(observable) {
+        if (this.isStopped)
+            Gouda.util.illegalState(this + ": cannot perform 'listenTo', already stopped");
+
+        if (observable != this.observing && !Constant.equals(observable, this.observing)) {
+            this.subscription.dispose();
+            this.subscription = observable.subscribe();
+            this.observing = observable;
+            observable.replay(this);
+        }
+    }
+});
+
+var Constant = Gouda.Constant = clutility(Gouda.Observable, {
+    initialize : function($super, value) {
+        $super(false);
+        this.value = value;
+    },
+    replay : function(observer) {
+        observer.onNext(Gouda.Event.Dirty);
+        observer.onNext(new Gouda.Event.Value(this.value));
+        observer.onNext(Gouda.Event.Ready);
+    }
+});
+
+Constant.equals = function(left, right) {
+    return left instanceof Constant && right instanceof Constant && left.value === right.value;
+};
+
+Gouda.Buffer = clutility({
+    initialize : function() {
+        this.reset();
+    },
+    onNext : function(x) {
+        this.buffer.push(x);
+    },
+    reset : function() {
+        this.buffer = [];
+    }
+});
 
 Gouda.makeFunctionArgsObservable = function(func) {
     return function() {
@@ -167,13 +325,12 @@ Gouda.toObservable = function(thing) {
   after the last listener has left. It will then also stop observing any observables it is listening to.
   (if the disposable is stored by using this.registerDisposable)
 */
-Gouda.BaseSubject = Gouda.util.declare(Rx.Subject, {
+Gouda.BaseSubject = clutility(Rx.Subject, {
 
     disposables : null,
     exception : null,
 
     initialize : function($super) {
-        debugger;
         $super();
         this.disposables = [];
     },
@@ -230,10 +387,62 @@ Gouda.BaseSubject = Gouda.util.declare(Rx.Subject, {
 });
 
 /**
+    A subject that, whenever a new observer is registered, sends a sequence of events to this observer in
+    order to get the state of this observer up to data as quickly as possible
+*/
+Gouda.ReplayableStream = null;
+
+/**
+    An observable that, between the dirty and stable state, queues and optimizes all incoming events, by
+    stripping out all events that are shadowed by a later event.
+
+    Fires all queued events just before becoming stable.
+*/
+Gouda.OptimizingStream = null;
+
+/**
+    An observable that accepts multiple incoming streams, and zips them into a single stream that only fires when
+    either all input streams are stable or one stream has an error and is stable
+*/
+Gouda.SyncingStream = null;
+
+Gouda.Transformer = clutility({
+    initialize : function($super, func /*args*/) {
+        $super();
+        /* Pseudo:
+        inputargs = arguments.slice(2);
+        optimizedArgs = _.map(inputargs, function(arg) {
+            return new Gouda.OptimizingStream(arg);
+        });
+        syncedArgs = new Gouda.SyncingStream(optimizedArgs);
+
+        result = syncedArgs.map(function(x) {
+            if (isError(x) || isDirty(x) || isStable(x))
+                return x;
+            else
+                return func.apply(x); //note, x is zipped array of arts
+        });
+        this.subscribeTo(result);
+        */
+    }
+});
+
+/*
+Gouda.multiply = clutility(Gouda.Transformer, {
+    initialize : function($super, left, right) {
+        $super(function(x, y) {
+            return x * y;
+        }, left, right);
+    }
+});
+*/
+
+
+/**
     A Variable is a mutable subject that can be listed to for changes. When subscribing, the
     lastest value will be pushed immediately to the subscriber
 */
-Gouda.Variable = Gouda.util.declare(Gouda.BaseSubject, {
+Gouda.Variable = clutility(Gouda.BaseSubject, {
     value : undefined,
 
     initialize : function($super, initialValue) {
@@ -258,7 +467,7 @@ Gouda.Variable = Gouda.util.declare(Gouda.BaseSubject, {
     },
 });
 
-Gouda.AbstractTransformer = Gouda.util.declare(Gouda.Variable, {
+Gouda.AbstractTransformer = clutility(Gouda.Variable, {
     inputs : null,
     initialize : function() {
         inputs = _.map(Gouda.toObservable); //Todo: wrap in syncing queue

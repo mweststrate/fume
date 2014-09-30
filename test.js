@@ -1,66 +1,46 @@
-var G = require("./src/gouda.js");
+var Gouda = require("./src/gouda.js");
+var G = Gouda;
 var expect = G.util.expect;
 
-//Testing classes
-
-var clazzA = G.util.declare({
-	initialize: function(x) {
-		this.value = x;
-	},
-	getX : function() {
-		return this.value;
-	}
-});
-
-var clazzB = G.util.declare(clazzA, {
-	initialize : function($super) {
-		this.value = 2;
-		$super(3);
-		//this.super.init.call(this, 3);
-	},
-	getX : function($super) {
-		return $super(this);
-	}
-});
-
-var b = new clazzB();
-if (3 !== b.getX())
-	throw new Error("Failed constructor");
-if (3 !== b.value)
-	throw new Error("Failed value");
-if (!(b instanceof clazzB))
-	throw new Error("Failed instanceof B");
-if (!(b instanceof clazzA))
-	throw new Error("Failed instanceof A");
-
 // Testing variables
+exports.testvars = function(test) {
+	var b = new Gouda.Buffer();
+	var b2 = new Gouda.Buffer();
 
-var a = new G.Variable("once");
-a.subscribe(expect(["once", "twice", "second twice"]));
-a.set("twice");
-a.subscribe(expect(["twice", "second twice"]));
-a.set("second twice");
+	var a = new G.Variable("once");
+	a.subscribe(b);
+	a.set("twice");
+	a.subscribe(b2);
+	a.set("second twice");
 
-var b = new G.Variable("never");
-b.set("once");
-var unsub = b.subscribe(expect(["once", "another twice"]));
-b.set("another twice");
-var unsub2 = b.subscribe(expect(["another twice","third"]));
-unsub.dispose();
-b.set("third");
-unsub2.dispose();
-if (!b.isDisposed)
-	throw new Error("Should be disposed");
+	test.deepEqual(b.buffer, ["once", "twice", "second twice"]);
+	test.deepEqual(b2.buffer, ["twice", "second twice"]);
 
+	b.reset();
+	b2.reset();
+	var x = new G.Variable("never");
+	x.set("once");
+	var unsub = x.subscribe(b);
+	x.set("another twice");
+	var unsub2 = x.subscribe(b2);
+	unsub.dispose();
+	x.set("third");
+	unsub2.dispose();
+	test.ok(x.isDisposed);
 
-
-// testing basic function and atomicity
-
-var x = new G.Variable(2);
-
-var z = G.multiply(x, x).subscribe(expect([4,6,9])); //TODO: should be 4, 9
-
-x.set(3);
+	test.deepEqual(b.buffer, ["once", "another twice"]);
+	test.deepEqual(b2.buffer, ["another twice", "third"]);
 
 
-console.log("ok");
+	// testing basic function and atomicity
+	b.reset();
+	x = new G.Variable(2);
+
+	var z = G.multiply(x, x).subscribe(b); //TODO: should be 4, 9
+
+	x.set(3);
+
+	test.deepEqual(b.buffer, [4,6,9]);
+
+	test.done();
+};
