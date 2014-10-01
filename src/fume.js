@@ -13,36 +13,10 @@ var Fume = Fume || {};
 //
 Fume.util = {};
 
-Fume.util.illegalState = function(msg) {
+var fail = Fume.util.fail = function(msg) {
     msg = msg || "This code shouldn't be triggered";
     throw new Error("IllegalStateException: " + msg);
 };
-/*
-Fume.util.expect = function(values, timeout) {
-    if (!_.isArray(values))
-        return Fume.util.expect([values], timeout);
-
-    timeout = timeout || 1000;
-    var done = 0;
-
-    var timeoutHandle = setTimeout(function() {
-        if (done < values.length - 1) {
-            throw new Error("Test failed: Callback " + done + " for value: " + values[done] + " was never called");
-        }
-    }, timeout);
-
-    return Rx.Observer.create(function(value) {
-        console.log(">> " + value);
-        if (done < values.length && values[done] != value)
-            throw new Error("Test failed, expected '" + values[done] + "', found: '" + value + "'");
-        done += 1;
-        if (done == value.length)
-            clearTimeout(timeoutHandle);
-        else if (done > values.length)
-            throw new Error("Test failed: callback was called to often. Latest value: " + value);
-    }, console.error, console.log);
-};
-*/
 
 
 //
@@ -56,20 +30,23 @@ var Event = Fume.Event = clutility({
             _.extend(this, props);
     },
     isStop : function() {
-        return this.type == "STOP";
+        return this.type === "STOP";
     },
     isDirty : function() {
-        return this.type == "DIRTY";
+        return this.type === "DIRTY";
     },
     isReady : function() {
-        return this.type == "READY";
+        return this.type === "READY";
     },
     isValue : function() {
-        return this.type == "VALUE";
+        return this.type === "VALUE";
+    },
+    isError : function() {
+        return this.type === "ERROR";
     }
 });
 Event.Stop = function() {
-    return new Event("STOP");
+    return new Event("STOP"); //Optimize: use single event instance
 };
 Event.Dirty = function() {
     return new Event("DIRTY");
@@ -79,6 +56,9 @@ Event.Ready = function() {
 };
 Event.Value = function(value) {
     return new Event("VALUE", { value : value });
+};
+Event.Error = function(code, error) {
+    return new Event("ERROR", { code : code, error : error});
 };
 
 /**
@@ -103,17 +83,20 @@ var Observable = Fume.Observable = clutility({
         observables should implement the 'onNext(value)' method.
         On subscribing, the current state of this (to be determined by @see getState), will be pushed to the observable
 
-        @param {Observer} observable.
+        @param {Observer} observer. Observer object that will receive the events. It is accepted to pass in a function as well.
         @returns {Disposable} disposable object. Call the @see Fume.Disposable#dispose function to stop listening to this observer
     */
     subscribe : function(observer) {
         if (this.isStopped)
-            Fume.util.illegalState(this + ": cannot perform 'subscribe'; already stopped.");
+            fail(this + ": cannot perform 'subscribe'; already stopped.");
+
+        if (typeof observer === "function")
+            observer = { onNext : observer };
+
+        this.replay(observer);
 
         this.observersIdx += 1;
         this.observers[this.observersIdx] = observer;
-
-        this.replay(observer);
 
         var observing = this;
         return {
@@ -121,7 +104,7 @@ var Observable = Fume.Observable = clutility({
             isDisposed : false,
             dispose : function(){
                 if (this.isDisposed)
-                    Fume.util.illegalState();
+                    fail();
                 this.isDisposed = true;
                 observing.unsubcribe(this);
             }
@@ -163,7 +146,7 @@ var Observable = Fume.Observable = clutility({
     */
     next : function(value) {
         if (this.isStopped)
-            Fume.util.illegalState(this + ": cannot perform 'next'; already stopped");
+            fail(this + ": cannot perform 'next'; already stopped");
         for(var key in this.observers)
             this.observers[key].onNext(value);
     },
@@ -203,36 +186,34 @@ var Observer = Fume.Observer = clutility({
 var Pipe = Fume.Pipe = clutility(Observable, {
 
     initialize : function($super, observable, autoClose){
-        $super(autoClose);
+        $super(autoClose === false ? false : true);
 
         observable = Observable.fromValue(observable);
         this.dirtyCount = 0;
-        this.isFiring = false;
         this.observing = observable;
         this.subscription = observable.subscribe(this);
+        this.isReplaying = false; //for cycle detection
     },
 
     onNext : function(event) {
-        if (this.isFiring)
-            Fume.util.IllegalStateException(this + " cannot perform onNext: event cycle detected");
-        this.isFiring =true;
+        if (!this.hasObservers()) //Optimization
+            return;
 
         if (event.isStop())
             this.stop();
         else if (event.isDirty()) {
-            if (!this.dirtyCount)
+            if (this.dirtyCount === 0)
                 this.next(event); //push dirty
             this.dirtyCount += 1;
         }
         else if (event.isReady()) {
             this.dirtyCount -= 1;
-            if (!this.dirtyCount)
+            if (this.dirtyCount === 0)
                 this.next(event); //push ready
         }
         else {
             this.next(event);
         }
-        this.isFiring = false;
     },
 
     stop : function($super) {
@@ -244,12 +225,21 @@ var Pipe = Fume.Pipe = clutility(Observable, {
     },
 
     replay : function(observer) {
+        if (this.isReplaying) {
+            //replay() is called before the observer is registered using subscribe,
+            //so we can push the error without introducing unendless recursion
+            observer.next(Event.Error("cycle_detected", "Detected cycle in " + this));
+            return;
+        }
+
+        this.isReplaying = true;
         this.observing.replay(observer);
+        this.isReplaying = false;
     },
 
-    listenTo : function(observable) {
+    observe : function(observable) {
         if (this.isStopped)
-            Fume.util.illegalState(this + ": cannot perform 'listenTo', already stopped");
+            fail(this + ": cannot perform 'observe', already stopped");
 
         observable = Observable.fromValue(observable);
         if (observable != this.observing && !Constant.equals(observable, this.observing)) {
@@ -276,6 +266,115 @@ var Constant = Fume.Constant = clutility(Fume.Observable, {
 Constant.equals = function(left, right) {
     return left instanceof Constant && right instanceof Constant && left.value === right.value;
 };
+
+var AnonymousObserver = Fume.AnonymousObserver = clutility(Observer, {
+    initialize : function(onNext) {
+        if (onNext)
+            this.onNext = onNext;
+    }
+});
+
+var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, {
+    initialize : function($super, observable, onNext) {
+        $super(onNext);
+        this.subscription = observable.subscribe(this);
+    },
+    dispose : function() {
+        this.subscription.dispose();
+    }
+});
+
+var Transformer = Fume.Transformer = clutility(Fume.Observable, {
+    initialize : function($super, observables) {
+        $super(true);
+        this.inputObservables = _.map(observables, Observable.fromValue);
+        this.inputDirtyCount = 0;
+        this.inputStates = [];
+        this.sink = _.bind(this.next, this); //sink that is used by process to push values to subsribers
+        this.inputObservers = _.map(this.inputObservables, function(observable, idx) {
+            return new DisposableObserver(observable,  _.bind(this.onNext, this, idx));
+        }, this);
+    },
+    onNext : function(inputIndex, event) {
+        if (event.isDirty()) {
+            if (this.inputDirtyCount === 0)
+                this.next(event);
+            this.inputDirtyCount += 1;
+        }
+        else if (event.isReady()) {
+            this.inputDirtyCount -= 1;
+
+            /*
+                if all inputs are satisfied, apply the process function
+            */
+            if (this.inputDirtyCount === 0) {
+                this.process(this.sink, this.inputStates);
+                this.next(event); //ready
+            }
+        }
+        else {
+            if (!this.inputStates[inputIndex])
+                this.inputStates[inputIndex] = [];
+            this.inputStates[inputIndex].push(event);
+        }
+        //TODO:
+    },
+    process : function(sink, inputs){
+
+    },
+    replay : function(observer) {
+        observer.onNext(Event.Dirty());
+        /*
+            replay all inputs, save the state
+        */
+        var states = [];
+        _.forEach(this.inputObservables, function(observable, idx) {
+            states[idx] = [];
+            observable.replay(new AnonymousObserver(function(event){
+                states[idx].push(event);
+            }));
+        });
+
+        /*
+            apply process on the inputs
+        */
+        this.process(_.bind(observer.onNext, observer), states);
+
+        observer.onNext(Event.Ready());
+    },
+    stop : function($super) {
+        _.forEach(this.inputObservers, function(observer) {
+            observer.dispose();
+        });
+        $super();
+    }
+});
+
+var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
+    initialize : function($super, func, observables) {
+        $super(observables);
+        this.simpleFunction = func;
+    },
+    process : function(sink, inputs) {
+        var hasError = false;
+        args = [];
+        for(var i = 0; i < inputs.length; i++) {
+            if (inputs[i].length !== 1)
+                fail("Expected exaclty one argument for PrimitiveTransformer " + this);
+            var event = inputs[i][0];
+            if (event.isError()) {
+                sink(event);
+                hasError = true;
+                break;
+            }
+            else if (!event.isValue())
+                fail("PrimitiveTransformer only supports primitive values as value " + this);
+            args[i] = event.value;
+        }
+        if (!hasError)
+            sink(this.simpleFunction.apply(this, args));
+    }
+});
 
 Fume.ValueBuffer = clutility({
     initialize : function() {
@@ -331,9 +430,9 @@ Fume.OptimizingPipe = null;
     either all input streams are stable or one stream has an error and is stable
 */
 Fume.SyncingStream = null;
-
+/*
 Fume.Transformer = clutility({
-    initialize : function($super, func /*args*/) {
+    initialize : function($super, func, //args//) {
         $super();
         /* Pseudo:
         inputargs = arguments.slice(2);
@@ -349,18 +448,17 @@ Fume.Transformer = clutility({
                 return func.apply(x); //note, x is zipped array of arts
         });
         this.subscribeTo(result);
-        */
-    }
-});
-
-/*
-Fume.multiply = clutility(Fume.Transformer, {
-    initialize : function($super, left, right) {
-        $super(function(x, y) {
-            return x * y;
-        }, left, right);
     }
 });
 */
+
+Fume.multiply = clutility(Fume.PrimitiveTransformer, {
+    initialize : function($super, left, right) {
+        $super(function(x, y) {
+            return x * y;
+        }, [left, right]);
+    }
+});
+
 
 module.exports = Fume;

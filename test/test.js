@@ -48,6 +48,64 @@ exports.testObservable2 = function(test) {
 	test.done();
 };
 
+exports.testPipe1 = function(test) {
+	var b = new Fume.ValueBuffer();
+	var p = new Fume.Pipe(3);
+	var s1 = p.subscribe(b);
+
+	p.observe(4);
+
+	p.onNext(Fume.Event.Dirty());
+	p.observe(5);
+	p.observe(6);
+	p.onNext(Fume.Event.Ready());
+
+	test.deepEqual(b.buffer, [3,4,5, 6]);
+	var b2 = new Fume.ValueBuffer();
+	var s2 = p.subscribe(b2);
+
+	test.deepEqual(b2.buffer, [6]);
+
+	s1.dispose();
+
+	p.observe(7);
+	p.observe(7);
+
+	test.deepEqual(b.buffer, [3,4,5,6]);
+	test.deepEqual(b2.buffer, [6,7]);
+	s2.dispose();
+
+	test.ok(p.isStopped);
+	test.ok(!p.hasObservers());
+	test.done();
+};
+
+exports.testCycleDetection = function(test) {
+	var p = new Fume.Pipe(3);
+	var last;
+
+	var sub = p.subscribe(function(value) {
+		if (!value.isReady() && !value.isDirty())
+			last = value;
+	});
+
+	test.equals(last.value, 3);
+	p.observe(p);
+
+	test.ok(last.isError());
+
+	test.equals(last.code, "cycle_detected");
+
+	p.observe(1);
+
+	test.equals(last.value, 1);
+
+	sub.dispose();
+	test.ok(!p.hasObservers());
+	test.ok(p.isStopped);
+	test.done();
+};
+
 // Testing variables
 /*exports.*/testvars = function(test) {
 	var b = new Fume.ValueBuffer();
@@ -55,9 +113,9 @@ exports.testObservable2 = function(test) {
 
 	var a = new G.Pipe("once");
 	a.subscribe(b);
-	a.listenTo("twice");
+	a.observe("twice");
 	a.subscribe(b2);
-	a.listenTo("second twice");
+	a.observe("second twice");
 
 	test.deepEqual(b.buffer, ["once", "twice", "second twice"]);
 	test.deepEqual(b2.buffer, ["twice", "second twice"]);
@@ -65,12 +123,12 @@ exports.testObservable2 = function(test) {
 	b.reset();
 	b2.reset();
 	var x = new G.Pipe("never");
-	x.listenTo("once");
+	x.observe("once");
 	var unsub = x.subscribe(b);
-	x.listenTo("another twice");
+	x.observe("another twice");
 	var unsub2 = x.subscribe(b2);
 	unsub.dispose();
-	x.listenTo("third");
+	x.observe("third");
 	unsub2.dispose();
 	test.ok(x.isStopped);
 
@@ -84,7 +142,7 @@ exports.testObservable2 = function(test) {
 
 	var z = G.multiply(x, x).subscribe(b); //TODO: should be 4, 9
 
-	x.listenTo(3);
+	x.observe(3);
 
 	test.deepEqual(b.buffer, [4,6,9]);
 
