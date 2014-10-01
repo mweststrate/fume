@@ -106,8 +106,7 @@ exports.testCycleDetection = function(test) {
 	test.done();
 };
 
-// Testing variables
-/*exports.*/testvars = function(test) {
+exports.testMultiply = function(test) {
 	var b = new Fume.ValueBuffer();
 	var b2 = new Fume.ValueBuffer();
 
@@ -138,13 +137,17 @@ exports.testCycleDetection = function(test) {
 
 	// testing basic function and atomicity
 	b.reset();
-	x = new G.Variable(2);
+	x = new G.Pipe(2);
 
-	var z = G.multiply(x, x).subscribe(b); //TODO: should be 4, 9
+	var z = new G.multiply(x, x).subscribe(b);
 
 	x.observe(3);
 
-	test.deepEqual(b.buffer, [4,6,9]);
+	test.deepEqual(b.buffer, [4,9]); //Note, no inbetween 6!
+
+	x.observe(4);
+
+	test.deepEqual(b.buffer, [4,9,16]);
 
 	test.done();
 };

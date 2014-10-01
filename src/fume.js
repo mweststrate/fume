@@ -43,6 +43,9 @@ var Event = Fume.Event = clutility({
     },
     isError : function() {
         return this.type === "ERROR";
+    },
+    toString : function() {
+        return JSON.stringify(this);
     }
 });
 Event.Stop = function() {
@@ -284,18 +287,19 @@ var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, 
     }
 });
 
-var Transformer = Fume.Transformer = clutility(Fume.Observable, {
+var Transformer = Fume.Transformer = clutility(Observable, {
     initialize : function($super, observables) {
         $super(true);
         this.inputObservables = _.map(observables, Observable.fromValue);
         this.inputDirtyCount = 0;
-        this.inputStates = [];
+        this.inputStates = []; //last event per input
         this.sink = _.bind(this.next, this); //sink that is used by process to push values to subsribers
         this.inputObservers = _.map(this.inputObservables, function(observable, idx) {
             return new DisposableObserver(observable,  _.bind(this.onNext, this, idx));
         }, this);
     },
     onNext : function(inputIndex, event) {
+        //todo: event should only be dirty, clean, error or value? what about stop?
         if (event.isDirty()) {
             if (this.inputDirtyCount === 0)
                 this.next(event);
@@ -313,11 +317,9 @@ var Transformer = Fume.Transformer = clutility(Fume.Observable, {
             }
         }
         else {
-            if (!this.inputStates[inputIndex])
-                this.inputStates[inputIndex] = [];
-            this.inputStates[inputIndex].push(event);
+            //TODO: is it correct that only the last event is processed
+            this.inputStates[inputIndex] = event;
         }
-        //TODO:
     },
     process : function(sink, inputs){
 
@@ -331,7 +333,8 @@ var Transformer = Fume.Transformer = clutility(Fume.Observable, {
         _.forEach(this.inputObservables, function(observable, idx) {
             states[idx] = [];
             observable.replay(new AnonymousObserver(function(event){
-                states[idx].push(event);
+                if (!event.isDirty() && !event.isReady())
+                    states[idx] = event;
             }));
         });
 
@@ -352,27 +355,25 @@ var Transformer = Fume.Transformer = clutility(Fume.Observable, {
 
 var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
     initialize : function($super, func, observables) {
-        $super(observables);
         this.simpleFunction = func;
+        $super(observables);
     },
     process : function(sink, inputs) {
         var hasError = false;
         args = [];
         for(var i = 0; i < inputs.length; i++) {
-            if (inputs[i].length !== 1)
-                fail("Expected exaclty one argument for PrimitiveTransformer " + this);
-            var event = inputs[i][0];
+            var event = inputs[i];
             if (event.isError()) {
                 sink(event);
                 hasError = true;
                 break;
             }
             else if (!event.isValue())
-                fail("PrimitiveTransformer only supports primitive values as value " + this);
+                fail("PrimitiveTransformer only supports primitive values as value " + this + ", got: " + event);
             args[i] = event.value;
         }
         if (!hasError)
-            sink(this.simpleFunction.apply(this, args));
+            sink(Event.Value(this.simpleFunction.apply(this, args)));
     }
 });
 
