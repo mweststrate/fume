@@ -1,3 +1,5 @@
+/* jshint immed:true, latedef:true, newcap:true, browser:true, node:true */
+
 var _ = require("lodash");
 var Rx  = require("rx");
 var clutility = require("clutility");
@@ -191,12 +193,6 @@ var Observable = Fume.Observable = clutility({
         this.observers = null;
     }
 });
-
-Observable.fromValue = function(value) {
-    if (value instanceof Observable)
-        return value;
-    return new Constant(value); //TODO: list, record, error, function...
-};
 
 var Disposable = Fume.Disposable = clutility({
     dispose : function() {
@@ -524,10 +520,21 @@ var List = Fume.List = clutility(Observable, {
     },
 
     toString : function() {
-        return "[" + this.toArray().join(",") + "]"";
+        return "[" + this.toArray().join(",") + "]";
     }
 });
 
+Observable.fromValue = function(value) {
+    if (value instanceof Observable)
+        return value;
+    return new Constant(value); //TODO: list, record, error, function...
+};
+
+Fume.multiply = function(left, right) {
+    return new PrimitiveTransformer(function(x, y) {
+        return x * y;
+    }, [left, right]);
+};
 
 Fume.ValueBuffer = clutility({
     initialize : function() {
@@ -542,12 +549,5 @@ Fume.ValueBuffer = clutility({
         return this;
     }
 });
-
-
-Fume.multiply = function(left, right) {
-    return new PrimitiveTransformer(function(x, y) {
-        return x * y;
-    }, [left, right]);
-};
 
 module.exports = Fume;
