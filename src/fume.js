@@ -293,7 +293,13 @@ var Transformer = Fume.Transformer = clutility(Observable, {
         this.inputObservables = _.map(observables, Observable.fromValue);
         this.inputDirtyCount = 0;
         this.inputStates = []; //last event per input
-        this.sink = _.bind(this.next, this); //sink that is used by process to push values to subsribers
+
+        //observer that pushes new events to our own observers
+        var self = this;
+        this.sink = new AnonymousObserver(function(value) {
+            self.next(value);
+        });
+
         this.inputObservers = _.map(this.inputObservables, function(observable, idx) {
             return new DisposableObserver(observable,  _.bind(this.onNext, this, idx));
         }, this);
@@ -321,7 +327,7 @@ var Transformer = Fume.Transformer = clutility(Observable, {
             this.inputStates[inputIndex] = event;
         }
     },
-    process : function(sink, inputs){
+    process : function(observer, inputs){
 
     },
     replay : function(observer) {
@@ -341,7 +347,7 @@ var Transformer = Fume.Transformer = clutility(Observable, {
         /*
             apply process on the inputs
         */
-        this.process(_.bind(observer.onNext, observer), states);
+        this.process(observer, states);
 
         observer.onNext(Event.Ready());
     },
@@ -358,13 +364,13 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
         this.simpleFunction = func;
         $super(observables);
     },
-    process : function(sink, inputs) {
+    process : function(observer, inputs) {
         var hasError = false;
         args = [];
         for(var i = 0; i < inputs.length; i++) {
             var event = inputs[i];
             if (event.isError()) {
-                sink(event);
+                observer.onNext(event);
                 hasError = true;
                 break;
             }
@@ -373,7 +379,7 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
             args[i] = event.value;
         }
         if (!hasError)
-            sink(Event.Value(this.simpleFunction.apply(this, args)));
+            observer.onNext(Event.Value(this.simpleFunction.apply(this, args)));
     }
 });
 
@@ -391,75 +397,10 @@ Fume.ValueBuffer = clutility({
 });
 
 
-/*
-    Observable.transform = transform with unshift this.
-
-    function transform(args, func) {
-        var innerResult = new Variable;
-
-        var innerArgs = args.accumelateEvents();
-        innerArgs.map(arg, idx) {
-            var disp = args.subscribe(function(changes) {
-                innerResult.markUnstable();
-                //wait for all args to be stable; combineLatest
-
-                apply func
-                innerResult.markStable();
-            })
-
-            innerResult.registerDisposable(disp);
-        }
-
-        return innerResult
-        .distinctUntilChanged
-        .accumelateEvents()
-        .detectCycles()
-    }
-*/
-
-
-/**
-    An observable that, between the dirty and stable state, queues and optimizes all incoming events, by
-    stripping out all events that are shadowed by a later event.
-
-    Fires all queued events just before becoming stable.
-*/
-Fume.OptimizingPipe = null;
-
-/**
-    An observable that accepts multiple incoming streams, and zips them into a single stream that only fires when
-    either all input streams are stable or one stream has an error and is stable
-*/
-Fume.SyncingStream = null;
-/*
-Fume.Transformer = clutility({
-    initialize : function($super, func, //args//) {
-        $super();
-        /* Pseudo:
-        inputargs = arguments.slice(2);
-        optimizedArgs = _.map(inputargs, function(arg) {
-            return new Fume.OptimizingStream(arg);
-        });
-        syncedArgs = new Fume.SyncingStream(optimizedArgs);
-
-        result = syncedArgs.map(function(x) {
-            if (isError(x) || isDirty(x) || isStable(x))
-                return x;
-            else
-                return func.apply(x); //note, x is zipped array of arts
-        });
-        this.subscribeTo(result);
-    }
-});
-*/
-
-Fume.multiply = clutility(Fume.PrimitiveTransformer, {
-    initialize : function($super, left, right) {
-        $super(function(x, y) {
-            return x * y;
-        }, [left, right]);
-    }
-});
-
+Fume.multiply = function(left, right) {
+    return new PrimitiveTransformer(function(x, y) {
+        return x * y;
+    }, [left, right]);
+};
 
 module.exports = Fume;

@@ -139,7 +139,7 @@ exports.testMultiply = function(test) {
 	b.reset();
 	x = new G.Pipe(2);
 
-	var z = new G.multiply(x, x).subscribe(b);
+	var z = G.multiply(x, x).subscribe(b);
 
 	x.observe(3);
 
