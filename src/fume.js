@@ -44,6 +44,18 @@ var Event = Fume.Event = clutility({
     isError : function() {
         return this.type === "ERROR";
     },
+    isClear : function() {
+        return this.type === "CLEAR";
+    },
+    isListInsert : function() {
+        return this.type === "INSERT";
+    },
+    isItemRemove : function() {
+        return this.type === "REMOVE";
+    },
+    isItemUpdate : function() {
+        return this.type === "UPDATE";
+    },
     toString : function() {
         return JSON.stringify(this);
     }
@@ -62,6 +74,18 @@ Event.Value = function(value) {
 };
 Event.Error = function(code, error) {
     return new Event("ERROR", { code : code, error : error});
+};
+Event.Clear = function() {
+    return new Event("CLEAR");
+};
+Event.ListInsert = function(index, value) {
+    return new Event("INSERT", { index : index, value : value});
+};
+Event.ItemRemove = function(index, value) {
+    return new Event("REMOVE", { index : index, value : value});
+};
+Event.ItemUpdate = function(index, value, oldvalue) {
+    return new Event("UPDATE", { index : index, value : value, oldvalue : oldvalue });
 };
 
 /**
@@ -382,6 +406,112 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
             observer.onNext(Event.Value(this.simpleFunction.apply(this, args)));
     }
 });
+
+var ChildItem = clutility(Pipe, {
+    initialize : function($super, parent, idx, initialValue) {
+        this.parent = parent;
+        this.index = idx;
+        $super(initialValue, false);
+    },
+    observe : function(newValue) {
+        var oldValue = this.get();
+        newValue = Observable.fromValue(newValue);
+
+        if (newValue === oldValue || Constant.equals(newValue, oldValue))
+            return;
+
+        this.parent.next(Event.Dirty());
+
+        $super(newValue);
+        this.parent.next(Event.ChildUpdate(this.index, newValue, oldValue));
+
+        this.parent.next(Event.Ready());
+    },
+    set : function(newValue) {
+        this.observe(newValue);
+    },
+    get : function() {
+        return this.observing;
+    }
+});
+
+var List = Fume.List = clutility(Observable, {
+    initialize : function($super) {
+        $super(false);
+        this.items = [];
+        this.lengthPipe = new Observable(false);
+    },
+
+    insert : function(idx, value) {
+        this.lengthPipe.next(Event.Dirty());
+        this.next(Event.Dirty());
+
+        var item = new ChildItem(this, idx, value);
+        this.items.splice(idx, 0, item);
+        for (var i = idx + 1; i < this.items.length; i++)
+            this.items[i].index += 1;
+
+        this.next(Event.ListInsert(idx, item.get()));
+        this.lengthPipe.next(Event.Value(this.items.length));
+
+        this.next(Event.Ready());
+        this.lengthPipe.next(Event.Ready());
+    },
+
+    set : function(idx, value) {
+        this.items[idx].set(value);
+    },
+
+    remove : function(idx) {
+        this.lengthPipe.next(Event.Dirty());
+        this.next(Event.Dirty());
+
+        var item = this.items[idx];
+        this.items.splice(idx, 1);
+        for (var i = idx ; i < this.items.length; i++)
+            this.items[i].index -= 1;
+
+        this.next(Event.ItemRemove(idx));
+        this.lengthPipe.next(Event.Value(this.items.length));
+        item.stop();
+
+        this.next(Event.Ready());
+        this.lengthPipe.next(Event.Ready());
+    },
+
+    clear : function() {
+        this.lengthPipe.next(Event.Dirty());
+        this.next(Event.Dirty());
+
+        for (var i = this.items.length -1; i >= 0; i--)
+            this.items[i].stop();
+        this.items = [];
+
+        this.next(Event.Clear());
+        this.lengthPipe.next(Event.Value(0));
+
+        this.next(Event.Ready());
+        this.lengthPipe.next(Event.Ready());
+    },
+
+    length : function() {
+        return this.lengthPipe;
+    },
+
+    replay : function(observer) {
+        observer.onNext(Event.Dirty());
+        observer.onNext(Event.Clear());
+        for(var i = 0, l = this.items.length; i < l; i++)
+            observer.onNext(Event.ListInsert(i, this.items[i].get()));
+        observer.onNext(Event.Ready());
+    },
+
+    stop : function($super) {
+        this.clear();
+        $super();
+    }
+});
+
 
 Fume.ValueBuffer = clutility({
     initialize : function() {
