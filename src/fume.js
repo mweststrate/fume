@@ -413,7 +413,7 @@ var ChildItem = clutility(Pipe, {
         this.index = idx;
         $super(initialValue, false);
     },
-    observe : function(newValue) {
+    observe : function($super, newValue) {
         var oldValue = this.get();
         newValue = Observable.fromValue(newValue);
 
@@ -423,7 +423,7 @@ var ChildItem = clutility(Pipe, {
         this.parent.next(Event.Dirty());
 
         $super(newValue);
-        this.parent.next(Event.ChildUpdate(this.index, newValue, oldValue));
+        this.parent.next(Event.ItemUpdate(this.index, newValue, oldValue));
 
         this.parent.next(Event.Ready());
     },
@@ -506,9 +506,25 @@ var List = Fume.List = clutility(Observable, {
         observer.onNext(Event.Ready());
     },
 
+    add : function(value) {
+        this.insert(this.items.length, value);
+    },
+
+    toArray : function() {
+        var res = [];
+        _.forEach(this.items, function(x){
+            res.push(x.get().value);
+        });
+        return res;
+    },
+
     stop : function($super) {
         this.clear();
         $super();
+    },
+
+    toString : function() {
+        return "[" + this.toArray().join(",") + "]"";
     }
 });
 
@@ -523,6 +539,7 @@ Fume.ValueBuffer = clutility({
     },
     reset : function() {
         this.buffer = [];
+        return this;
     }
 });
 

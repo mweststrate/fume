@@ -1,6 +1,7 @@
 var Fume = require("./../src/fume.js");
-var G = Fume;
-var expect = G.util.expect;
+var F = Fume;
+var expect = F.util.expect;
+var Event = Fume.Event;
 
 exports.testObservable1 = function(test) {
 	var source = new Fume.Observable(true);
@@ -110,7 +111,7 @@ exports.testMultiply = function(test) {
 	var b = new Fume.ValueBuffer();
 	var b2 = new Fume.ValueBuffer();
 
-	var a = new G.Pipe("once");
+	var a = new F.Pipe("once");
 	a.subscribe(b);
 	a.observe("twice");
 	a.subscribe(b2);
@@ -121,7 +122,7 @@ exports.testMultiply = function(test) {
 
 	b.reset();
 	b2.reset();
-	var x = new G.Pipe("never");
+	var x = new F.Pipe("never");
 	x.observe("once");
 	var unsub = x.subscribe(b);
 	x.observe("another twice");
@@ -137,9 +138,9 @@ exports.testMultiply = function(test) {
 
 	// testing basic function and atomicity
 	b.reset();
-	x = new G.Pipe(2);
+	x = new F.Pipe(2);
 
-	var z = G.multiply(x, x).subscribe(b);
+	var z = F.multiply(x, x).subscribe(b);
 
 	x.observe(3);
 
@@ -148,6 +149,22 @@ exports.testMultiply = function(test) {
 	x.observe(4);
 
 	test.deepEqual(b.buffer, [4,9,16]);
+
+	test.done();
+};
+
+exports.list1 = function(test) {
+	var l = new F.List();
+	l.add(1);
+	l.add(2);
+	l.insert(0, 0);
+	l.insert(2, 1.5);
+	l.remove(1);
+	l.set(2,4);
+	test.deepEqual(l.toArray(), [0,1.5,4]);
+
+	l.clear();
+	test.deepEqual(l.toArray(),[]);
 
 	test.done();
 };
