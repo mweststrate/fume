@@ -416,12 +416,12 @@ var ChildItem = clutility(Pipe, {
         if (newValue === oldValue || Constant.equals(newValue, oldValue))
             return;
 
-        this.parent.next(Event.Dirty());
+        this.parent.markDirty(false);
 
         $super(newValue);
         this.parent.next(Event.ItemUpdate(this.index, newValue, oldValue));
 
-        this.parent.next(Event.Ready());
+        this.parent.markReady(false);
     },
     set : function(newValue) {
         this.observe(newValue);
@@ -439,8 +439,7 @@ var List = Fume.List = clutility(Observable, {
     },
 
     insert : function(idx, value) {
-        this.lengthPipe.next(Event.Dirty());
-        this.next(Event.Dirty());
+        this.markDirty(true);
 
         var item = new ChildItem(this, idx, value);
         this.items.splice(idx, 0, item);
@@ -450,8 +449,7 @@ var List = Fume.List = clutility(Observable, {
         this.next(Event.ListInsert(idx, item.get()));
         this.lengthPipe.next(Event.Value(this.items.length));
 
-        this.next(Event.Ready());
-        this.lengthPipe.next(Event.Ready());
+        this.markReady(true);
     },
 
     set : function(idx, value) {
@@ -459,8 +457,7 @@ var List = Fume.List = clutility(Observable, {
     },
 
     remove : function(idx) {
-        this.lengthPipe.next(Event.Dirty());
-        this.next(Event.Dirty());
+        this.markDirty(true);
 
         var item = this.items[idx];
         this.items.splice(idx, 1);
@@ -471,13 +468,11 @@ var List = Fume.List = clutility(Observable, {
         this.lengthPipe.next(Event.Value(this.items.length));
         item.stop();
 
-        this.next(Event.Ready());
-        this.lengthPipe.next(Event.Ready());
+        this.markReady(true);
     },
 
     clear : function() {
-        this.lengthPipe.next(Event.Dirty());
-        this.next(Event.Dirty());
+        this.markDirty(true);
 
         for (var i = this.items.length -1; i >= 0; i--)
             this.items[i].stop();
@@ -486,8 +481,7 @@ var List = Fume.List = clutility(Observable, {
         this.next(Event.Clear());
         this.lengthPipe.next(Event.Value(0));
 
-        this.next(Event.Ready());
-        this.lengthPipe.next(Event.Ready());
+        this.markReady(true);
     },
 
     length : function() {
@@ -520,7 +514,23 @@ var List = Fume.List = clutility(Observable, {
 
     stop : function($super) {
         this.clear();
+        this.lengthPipe.clear();
+        _.forEach(this.items, function(item) {
+            item.stop();
+        });
         $super();
+    },
+
+    markDirty : function(includeLength) {
+        this.next(Event.Dirty());
+        if (includeLength)
+            this.lengthPipe.next(Event.Dirty());
+    },
+
+    markReady : function(includeLength) {
+        this.next(Event.Ready());
+        if (includeLength)
+            this.lengthPipe.next(Event.Ready());
     },
 
     toString : function() {
