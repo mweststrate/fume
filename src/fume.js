@@ -506,6 +506,10 @@ var List = Fume.List = clutility(Observable, {
         this.insert(this.items.length, value);
     },
 
+    get : function(index) {
+        return this.items[index];
+    },
+
     toArray : function() {
         var res = [];
         _.forEach(this.items, function(x){
@@ -547,6 +551,12 @@ Fume.ValueBuffer = clutility({
     reset : function() {
         this.buffer = [];
         return this;
+    }
+});
+
+Fume.EventTypeBuffer = clutility(Fume.ValueBuffer, {
+    onNext : function(x) {
+        this.buffer.push(x.type);
     }
 });
 

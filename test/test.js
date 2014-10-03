@@ -154,7 +154,13 @@ exports.testMultiply = function(test) {
 };
 
 exports.list1 = function(test) {
+	var lb = new F.ValueBuffer();
+	var lbe = new F.EventTypeBuffer();
+	var e = new F.EventTypeBuffer();
 	var l = new F.List();
+	l.subscribe(e);
+	l.length().subscribe(lb);
+	l.length().subscribe(lbe);
 	l.add(1);
 	l.add(2);
 	l.insert(0, 0);
@@ -163,8 +169,38 @@ exports.list1 = function(test) {
 	l.set(2,4);
 	test.deepEqual(l.toArray(), [0,1.5,4]);
 
+
+	var b = new F.ValueBuffer();
+	l.get(1).subscribe(b);
+	test.deepEqual(b.buffer, [1.5]);
+	l.set(1, 3);
+	test.deepEqual(b.buffer, [1.5,3]);
+	test.equal(l.get(0).get().value, 0);
+
+	for(var i = 0; i < l.items.length; i++)
+		test.equal(l.items[i].index, i);
+
 	l.clear();
 	test.deepEqual(l.toArray(),[]);
-
+	test.deepEqual(lb.buffer,[1,2,3,4,3,0]);
+	test.deepEqual(e.buffer, [
+		"DIRTY", "CLEAR", "READY",
+		"DIRTY", "INSERT", "READY",
+		"DIRTY", "INSERT", "READY",
+		"DIRTY", "INSERT", "READY",
+		"DIRTY", "INSERT", "READY",
+		"DIRTY", "REMOVE", "READY",
+		"DIRTY", "UPDATE", "READY",
+		"DIRTY", "UPDATE", "READY",
+		"DIRTY", "CLEAR", "READY"
+	]);
+	test.deepEqual(lbe.buffer,[
+		"DIRTY", "VALUE", "READY",
+		"DIRTY", "VALUE", "READY",
+		"DIRTY", "VALUE", "READY",
+		"DIRTY", "VALUE", "READY",
+		"DIRTY", "VALUE", "READY",
+		"DIRTY", "VALUE", "READY"
+	]);
 	test.done();
 };
