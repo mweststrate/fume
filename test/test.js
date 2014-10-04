@@ -4,23 +4,23 @@ var expect = F.util.expect;
 var Event = Fume.Event;
 
 exports.testObservable1 = function(test) {
-	var source = new Fume.Observable(true);
+	var source = new Fume.Stream(true);
 	test.ok(!source.isStopped);
 	test.ok(!source.hasObservers());
 
 	var x;
 	var target = new Fume.Observer();
-	target.onNext = function(y) {
+	target.in = function(y) {
 		x = y;
 	};
 
 	var sub = source.subscribe(target);
-	source.next(3);
+	source.out(3);
 
 	test.equals(3, x);
 	test.ok(source.hasObservers());
 
-	source.next(4);
+	source.out(4);
 	test.equals(4, x);
 
 	sub.dispose();
@@ -31,11 +31,11 @@ exports.testObservable1 = function(test) {
 };
 
 exports.testObservable2 = function(test) {
-	var source = new Fume.Observable(false);
+	var source = new Fume.Stream(false);
 
 	var x;
 	var target = new Fume.Observer();
-	target.onNext = function(y) {
+	target.in = function(y) {
 		x = y;
 	};
 
@@ -56,10 +56,10 @@ exports.testPipe1 = function(test) {
 
 	p.observe(4);
 
-	p.onNext(Fume.Event.Dirty());
+	p.in(Fume.Event.dirty());
 	p.observe(5);
 	p.observe(6);
-	p.onNext(Fume.Event.Ready());
+	p.in(Fume.Event.ready());
 
 	test.deepEqual(b.buffer, [3,4,5, 6]);
 	var b2 = new Fume.ValueBuffer();

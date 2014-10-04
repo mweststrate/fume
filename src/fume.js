@@ -4,27 +4,54 @@ var _ = require("lodash");
 var Rx  = require("rx");
 var clutility = require("clutility");
 
-//
-// Set up namespaces
-//
-
+/** @namespace Fume */
 var Fume = Fume || {};
 
-//
-// Utilties
-//
+/** @namespace Fume.util */
 Fume.util = {};
 
+/**
+Throws illegal state exception. Use this for code / state that should never occur
+
+@method
+@param {String} msg - (optional) additional details for this error
+*/
 var fail = Fume.util.fail = function(msg) {
     msg = msg || "This code shouldn't be triggered";
     throw new Error("IllegalStateException: " + msg);
 };
 
+/**
+The Event class describes all event types that can be send through Fume streams.
+In, for exampel RxJs there are just three types of events: `Next`, `Completed` and `Error`.
+However, fume consists of many more event types, being:
 
-//
-// Events
-//
+### Control events
 
+* dirty - the stream will be changed soon
+* ready - the stream has sent all its changes and is stable again
+* stop - this stream ends (similar to complete in RxJs)
+* error - an error has occurred. Like in Bacon.js, and unlike RxJs. `error` will not end the stream.
+
+### Value related events
+
+* value(value) - a new value is sent through this stream. Similar to next in RxJs
+
+### Complex structure (@see List or @see Dict) related events
+
+* clear - reset all state / data of this structure
+* listInsert(index, value) - a new item was added to a list at the specified index
+* itemRemove(index) - the item at the specified index (key) was removed from the structure
+* itemUpdate(index, value) - the value at the specified index / key was replaced with a new value
+
+For each event type there is a static method that creates the event, for example:
+`Event.insert(index, value)`, and there is instance function to check whether instance is a specific type of event.
+For example: `this.isInsert()`
+
+The index parameter should always be a positive integer (for Lists) or any string (for Dicts) that is a valid identifier.
+
+@class
+*/
 var Event = Fume.Event = clutility({
     initialize : function(type, props) {
         this.type = type;
@@ -49,56 +76,69 @@ var Event = Fume.Event = clutility({
     isClear : function() {
         return this.type === "CLEAR";
     },
-    isListInsert : function() {
+    isInsert : function() {
         return this.type === "INSERT";
     },
-    isItemRemove : function() {
+    isRemove : function() {
         return this.type === "REMOVE";
     },
-    isItemUpdate : function() {
+    isUpdate : function() {
         return this.type === "UPDATE";
     },
     toString : function() {
         return JSON.stringify(this);
     }
 });
-Event.Stop = function() {
+Event.stop = function() {
     return new Event("STOP"); //Optimize: use single event instance
 };
-Event.Dirty = function() {
+Event.dirty = function() {
     return new Event("DIRTY");
 };
-Event.Ready = function() {
+Event.ready = function() {
     return new Event("READY");
 };
-Event.Value = function(value) {
+Event.value = function(value) {
     return new Event("VALUE", { value : value });
 };
-Event.Error = function(code, error) {
+Event.error = function(code, error) {
     return new Event("ERROR", { code : code, error : error});
 };
-Event.Clear = function() {
+Event.clear = function() {
     return new Event("CLEAR");
 };
-Event.ListInsert = function(index, value) {
+Event.insert = function(index, value) {
     return new Event("INSERT", { index : index, value : value});
 };
-Event.ItemRemove = function(index, value) {
+Event.remove = function(index, value) {
     return new Event("REMOVE", { index : index, value : value});
 };
-Event.ItemUpdate = function(index, value, oldvalue) {
+Event.update = function(index, value, oldvalue) {
     return new Event("UPDATE", { index : index, value : value, oldvalue : oldvalue });
 };
 
 /**
-    Observable is a stream that might push values to all its subscribers until the Fume.Event.Stop is propagated.
+Stream is the heart of fume. A stream is an event emitter that can be observed by one or more Observers.
+Stream is very similar to RxJs's Observable or Bacon.js's Stream.
 
+A stream will always send one of the events as described by @see Event.
+
+New observers can subscribe to the stream by using the `subscribe` method. (Similar to RxJs)
+
+New values can be pushed by the stream to its observers by using the `out` method. (Similar to RxJs Observable.next).
+For example: `this.out(Event.value(2));`
+
+When a new observer registers, it will be send to the `replay` method. The replay has the opportunity to push the current
+state of the stream to the observer. This is not required and depends on the character of the stream whether this should happen.
+
+@class
 */
-var Observable = Fume.Observable = clutility({
+var Stream = Fume.Stream = clutility({
 
-    /*
-        Create a new observable.
-        @param {Boolean} autoClose: automatically stop this observer if the last observable has left
+    /**
+        Create a new stream.
+
+        @param {Boolean} autoClose - automatically stop this observer if the last observer has left
     */
     initialize : function(autoClose) {
         this.autoClose = autoClose;
@@ -107,20 +147,20 @@ var Observable = Fume.Observable = clutility({
         this.observers = {};
     },
 
-    /*
-        Subscribes an observer to this observable
-        observables should implement the 'onNext(value)' method.
-        On subscribing, the current state of this (to be determined by @see getState), will be pushed to the observable
+    /**
+        Subscribes an observer to this stream.
+        Observables should implement the 'in(event)' method.
+        On subscribing, the current state of this stream can be pushed to the observable by invoking the `replay` function.
 
-        @param {Observer} observer. Observer object that will receive the events. It is accepted to pass in a function as well.
-        @returns {Disposable} disposable object. Call the @see Fume.Disposable#dispose function to stop listening to this observer
+        @param {Observer} observer - Observer object that will receive the events. It is allowed to pass in a function as well.
+        @returns {Disposable} - disposable object. Call the @see Fume.Disposable#dispose function to stop listening to this observer
     */
     subscribe : function(observer) {
         if (this.isStopped)
             fail(this + ": cannot perform 'subscribe'; already stopped.");
 
         if (typeof observer === "function")
-            observer = { onNext : observer };
+            observer = new AnonymousObserver(observer);
 
         this.replay(observer);
 
@@ -140,7 +180,8 @@ var Observable = Fume.Observable = clutility({
         };
     },
 
-    /*
+    /**
+        Called by the dispose function of any disposables returned by the subscribe method.
         @private
     */
     unsubcribe : function(disposable) {
@@ -149,8 +190,8 @@ var Observable = Fume.Observable = clutility({
             this.stop();
     },
 
-    /*
-        Returns whether any observers are listening to this observable
+    /**
+        @return {Boolean} - Returns whether any observers are listening to this observable
     */
     hasObservers : function() {
         if (this.observers) for(var key in this.observers)
@@ -158,26 +199,28 @@ var Observable = Fume.Observable = clutility({
         return false;
     },
 
-    /*
-        Returns the current state of this observer in as few events as possible.
-        When a new observer subscribes to this observable, the current state will be pushed
-        to the observer, to get it in sync with all other observers.
+    /**
+        Makes sure that the observer is brought in to sync with any other observers, so that
+        it correctly reflects the current state of this stream (whatever that means).
+        Usually replay should start with sending the `Dirty` event and end with the `Ready` event.
 
         @param {Observer} observer Observer that should receives the initial state.
     */
     replay : function(observer) {
-        //sub
+        //stub
     },
 
-    /*
-        @private
-        Use this method to push a value to all observers of this observable
+    /**
+        Use this method to push a value to all observers of this stream
+
+        @protected
+        @param {Event} - event to be passed to the subscribers
     */
-    next : function(value) {
+    out : function(value) {
         if (this.isStopped)
             fail(this + ": cannot perform 'next'; already stopped");
         for(var key in this.observers)
-            this.observers[key].onNext(value);
+            this.observers[key].in(value);
     },
 
     /*
@@ -188,7 +231,7 @@ var Observable = Fume.Observable = clutility({
         if (this.isStopped)
             return;
         if (this.hasObservers())
-            this.next(Event.Stop());
+            this.out(Event.stop());
         this.isStopped = true;
         this.observers = null;
     }
@@ -201,24 +244,24 @@ var Disposable = Fume.Disposable = clutility({
 });
 
 var Observer = Fume.Observer = clutility({
-    onNext : function(value) {
+    in : function(value) {
         //Just a stub
     }
 });
 
-var Pipe = Fume.Pipe = clutility(Observable, {
+var Pipe = Fume.Pipe = clutility(Stream, {
 
     initialize : function($super, observable, autoClose){
         $super(autoClose === false ? false : true);
 
-        observable = Observable.fromValue(observable);
+        observable = Stream.fromValue(observable);
         this.dirtyCount = 0;
         this.observing = observable;
         this.subscription = observable.subscribe(this);
         this.isReplaying = false; //for cycle detection
     },
 
-    onNext : function(event) {
+    in : function(event) {
         if (!this.hasObservers()) //Optimization
             return;
 
@@ -226,16 +269,16 @@ var Pipe = Fume.Pipe = clutility(Observable, {
             this.stop();
         else if (event.isDirty()) {
             if (this.dirtyCount === 0)
-                this.next(event); //push dirty
+                this.out(event); //push dirty
             this.dirtyCount += 1;
         }
         else if (event.isReady()) {
             this.dirtyCount -= 1;
             if (this.dirtyCount === 0)
-                this.next(event); //push ready
+                this.out(event); //push ready
         }
         else {
-            this.next(event);
+            this.out(event);
         }
     },
 
@@ -251,7 +294,7 @@ var Pipe = Fume.Pipe = clutility(Observable, {
         if (this.isReplaying) {
             //replay() is called before the observer is registered using subscribe,
             //so we can push the error without introducing unendless recursion
-            observer.next(Event.Error("cycle_detected", "Detected cycle in " + this));
+            observer.out(Event.error("cycle_detected", "Detected cycle in " + this));
             return;
         }
 
@@ -264,7 +307,7 @@ var Pipe = Fume.Pipe = clutility(Observable, {
         if (this.isStopped)
             fail(this + ": cannot perform 'observe', already stopped");
 
-        observable = Observable.fromValue(observable);
+        observable = Stream.fromValue(observable);
         if (observable != this.observing && !Constant.equals(observable, this.observing)) {
             this.subscription.dispose();
 
@@ -274,15 +317,15 @@ var Pipe = Fume.Pipe = clutility(Observable, {
     }
 });
 
-var Constant = Fume.Constant = clutility(Fume.Observable, {
+var Constant = Fume.Constant = clutility(Fume.Stream, {
     initialize : function($super, value) {
         $super(false);
         this.value = value;
     },
     replay : function(observer) {
-        observer.onNext(Event.Dirty());
-        observer.onNext(Event.Value(this.value));
-        observer.onNext(Event.Ready());
+        observer.in(Event.dirty());
+        observer.in(Event.value(this.value));
+        observer.in(Event.ready());
     },
     toString : function() {
         return "(" + this.value + ")";
@@ -294,15 +337,15 @@ Constant.equals = function(left, right) {
 };
 
 var AnonymousObserver = Fume.AnonymousObserver = clutility(Observer, {
-    initialize : function(onNext) {
-        if (onNext)
-            this.onNext = onNext;
+    initialize : function(func) {
+        if (func)
+            this.in = func;
     }
 });
 
 var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, {
-    initialize : function($super, observable, onNext) {
-        $super(onNext);
+    initialize : function($super, observable, func) {
+        $super(func);
         this.subscription = observable.subscribe(this);
     },
     dispose : function() {
@@ -310,28 +353,28 @@ var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, 
     }
 });
 
-var Transformer = Fume.Transformer = clutility(Observable, {
+var Transformer = Fume.Transformer = clutility(Stream, {
     initialize : function($super, observables) {
         $super(true);
-        this.inputObservables = _.map(observables, Observable.fromValue);
+        this.inputObservables = _.map(observables, Stream.fromValue);
         this.inputDirtyCount = 0;
         this.inputStates = []; //last event per input
 
         //observer that pushes new events to our own observers
         var self = this;
         this.sink = new AnonymousObserver(function(value) {
-            self.next(value);
+            self.out(value);
         });
 
         this.inputObservers = _.map(this.inputObservables, function(observable, idx) {
-            return new DisposableObserver(observable,  _.bind(this.onNext, this, idx));
+            return new DisposableObserver(observable,  _.bind(this.in, this, idx));
         }, this);
     },
-    onNext : function(inputIndex, event) {
+    in : function(inputIndex, event) {
         //todo: event should only be dirty, clean, error or value? what about stop?
         if (event.isDirty()) {
             if (this.inputDirtyCount === 0)
-                this.next(event);
+                this.out(event);
             this.inputDirtyCount += 1;
         }
         else if (event.isReady()) {
@@ -342,7 +385,7 @@ var Transformer = Fume.Transformer = clutility(Observable, {
             */
             if (this.inputDirtyCount === 0) {
                 this.process(this.sink, this.inputStates);
-                this.next(event); //ready
+                this.out(event); //ready
             }
         }
         else {
@@ -354,7 +397,7 @@ var Transformer = Fume.Transformer = clutility(Observable, {
 
     },
     replay : function(observer) {
-        observer.onNext(Event.Dirty());
+        observer.in(Event.dirty());
         /*
             replay all inputs, save the state
         */
@@ -372,7 +415,7 @@ var Transformer = Fume.Transformer = clutility(Observable, {
         */
         this.process(observer, states);
 
-        observer.onNext(Event.Ready());
+        observer.in(Event.ready());
     },
     stop : function($super) {
         _.forEach(this.inputObservers, function(observer) {
@@ -393,7 +436,7 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
         for(var i = 0; i < inputs.length; i++) {
             var event = inputs[i];
             if (event.isError()) {
-                observer.onNext(event);
+                observer.in(event);
                 hasError = true;
                 break;
             }
@@ -402,7 +445,7 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
             args[i] = event.value;
         }
         if (!hasError)
-            observer.onNext(Event.Value(this.simpleFunction.apply(this, args)));
+            observer.in(Event.value(this.simpleFunction.apply(this, args)));
     }
 });
 
@@ -414,7 +457,7 @@ var ChildItem = clutility(Pipe, {
     },
     observe : function($super, newValue) {
         var oldValue = this.get();
-        newValue = Observable.fromValue(newValue);
+        newValue = Stream.fromValue(newValue);
 
         if (newValue === oldValue || Constant.equals(newValue, oldValue))
             return;
@@ -422,7 +465,7 @@ var ChildItem = clutility(Pipe, {
         this.parent.markDirty(false);
 
         $super(newValue);
-        this.parent.next(Event.ItemUpdate(this.index, newValue, oldValue));
+        this.parent.out(Event.update(this.index, newValue, oldValue));
 
         this.parent.markReady(false);
     },
@@ -437,11 +480,11 @@ var ChildItem = clutility(Pipe, {
     }
 });
 
-var List = Fume.List = clutility(Observable, {
+var List = Fume.List = clutility(Stream, {
     initialize : function($super) {
         $super(false);
         this.items = [];
-        this.lengthPipe = new Observable(false);
+        this.lengthPipe = new Stream(false);
     },
 
     insert : function(idx, value) {
@@ -452,8 +495,8 @@ var List = Fume.List = clutility(Observable, {
         for (var i = idx + 1; i < this.items.length; i++)
             this.items[i].index += 1;
 
-        this.next(Event.ListInsert(idx, item.get()));
-        this.lengthPipe.next(Event.Value(this.items.length));
+        this.out(Event.insert(idx, item.get()));
+        this.lengthPipe.out(Event.value(this.items.length));
 
         this.markReady(true);
     },
@@ -470,8 +513,8 @@ var List = Fume.List = clutility(Observable, {
         for (var i = idx ; i < this.items.length; i++)
             this.items[i].index -= 1;
 
-        this.next(Event.ItemRemove(idx));
-        this.lengthPipe.next(Event.Value(this.items.length));
+        this.out(Event.remove(idx));
+        this.lengthPipe.out(Event.value(this.items.length));
         item.stop();
 
         this.markReady(true);
@@ -487,8 +530,8 @@ var List = Fume.List = clutility(Observable, {
             this.items[i].stop();
         this.items = [];
 
-        this.next(Event.Clear());
-        this.lengthPipe.next(Event.Value(0));
+        this.out(Event.clear());
+        this.lengthPipe.out(Event.value(0));
 
         this.markReady(true);
     },
@@ -498,11 +541,11 @@ var List = Fume.List = clutility(Observable, {
     },
 
     replay : function(observer) {
-        observer.onNext(Event.Dirty());
-        observer.onNext(Event.Clear());
+        observer.in(Event.dirty());
+        observer.in(Event.clear());
         for(var i = 0, l = this.items.length; i < l; i++)
-            observer.onNext(Event.ListInsert(i, this.items[i].get()));
-        observer.onNext(Event.Ready());
+            observer.in(Event.insert(i, this.items[i].get()));
+        observer.in(Event.ready());
     },
 
     add : function(value) {
@@ -531,15 +574,15 @@ var List = Fume.List = clutility(Observable, {
     },
 
     markDirty : function(includeLength) {
-        this.next(Event.Dirty());
+        this.out(Event.dirty());
         if (includeLength)
-            this.lengthPipe.next(Event.Dirty());
+            this.lengthPipe.out(Event.dirty());
     },
 
     markReady : function(includeLength) {
-        this.next(Event.Ready());
+        this.out(Event.ready());
         if (includeLength)
-            this.lengthPipe.next(Event.Ready());
+            this.lengthPipe.out(Event.ready());
     },
 
     toString : function() {
@@ -547,8 +590,8 @@ var List = Fume.List = clutility(Observable, {
     }
 });
 
-Observable.fromValue = function(value) {
-    if (value instanceof Observable)
+Stream.fromValue = function(value) {
+    if (value instanceof Stream)
         return value;
     return new Constant(value); //TODO: list, record, error, function...
 };
@@ -563,7 +606,7 @@ Fume.ValueBuffer = clutility({
     initialize : function() {
         this.reset();
     },
-    onNext : function(x) {
+    in : function(x) {
         if (x.isValue())
             this.buffer.push(x.value);
     },
@@ -574,7 +617,7 @@ Fume.ValueBuffer = clutility({
 });
 
 Fume.EventTypeBuffer = clutility(Fume.ValueBuffer, {
-    onNext : function(x) {
+    in : function(x) {
         this.buffer.push(x.type);
     }
 });
