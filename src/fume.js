@@ -283,6 +283,9 @@ var Constant = Fume.Constant = clutility(Fume.Observable, {
         observer.onNext(Event.Dirty());
         observer.onNext(Event.Value(this.value));
         observer.onNext(Event.Ready());
+    },
+    toString : function() {
+        return "(" + this.value + ")";
     }
 });
 
@@ -428,6 +431,9 @@ var ChildItem = clutility(Pipe, {
     },
     get : function() {
         return this.observing;
+    },
+    toString : function() {
+        return this.index + ":" + this.observing.toString();
     }
 });
 
@@ -472,6 +478,9 @@ var List = Fume.List = clutility(Observable, {
     },
 
     clear : function() {
+        if (this.length === 0)
+            return;
+
         this.markDirty(true);
 
         for (var i = this.items.length -1; i >= 0; i--)
