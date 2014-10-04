@@ -237,15 +237,73 @@ var Stream = Fume.Stream = clutility({
     }
 });
 
+/**
+Class / interface. An item that listens to a stream. For every event that is being send through a stream's `out` method,
+the `in` method of this observer is invoked
+
+@class
+*/
+var Observer = Fume.Observer = clutility({
+    /**
+        @param {Event} value - event that is being received by this observer.
+    */
+    in : function(value) {
+        //Just a stub
+    }
+});
+
+/**
+Class, or merely interface, that exposes a `dispose` function. Used to unsubscribe observers from a stream.
+
+@class
+*/
 var Disposable = Fume.Disposable = clutility({
     dispose : function() {
         //stub
     }
 });
 
-var Observer = Fume.Observer = clutility({
-    in : function(value) {
-        //Just a stub
+/**
+Utility class. Simple observer that is constructed by directly passing in the `in` method to the constructor.
+
+Sample usage:
+
+```javascript
+Stream.subscribe(new AnonymousObserver(function(event) {
+    //code
+}));
+```
+
+@class
+*/
+var AnonymousObserver = Fume.AnonymousObserver = clutility(Observer, {
+    /**
+        @param {function(Event)} func - implementation of the `in` method of this Observer
+    */
+    initialize : function(func) {
+        if (func)
+            this.in = func;
+    }
+});
+
+/**
+Utility class. Observer and Disposable that subscribes itself to a stream. This object can dispose itself from the stream.
+@class
+*/
+var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, {
+    /**
+        @param {Stream} stream - stream to listen to
+        @param {function(Event)} func - (Optional) implementation of the `in` method
+    */
+    initialize : function($super, stream, func) {
+        $super(func);
+        this.subscription = stream.subscribe(this);
+    },
+    /**
+        Disposes this observer, it will no longer listen to its stream.
+    */
+    dispose : function() {
+        this.subscription.dispose();
     }
 });
 
@@ -317,41 +375,6 @@ var Pipe = Fume.Pipe = clutility(Stream, {
     }
 });
 
-var Constant = Fume.Constant = clutility(Fume.Stream, {
-    initialize : function($super, value) {
-        $super(false);
-        this.value = value;
-    },
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(Event.value(this.value));
-        observer.in(Event.ready());
-    },
-    toString : function() {
-        return "(" + this.value + ")";
-    }
-});
-
-Constant.equals = function(left, right) {
-    return left instanceof Constant && right instanceof Constant && left.value === right.value;
-};
-
-var AnonymousObserver = Fume.AnonymousObserver = clutility(Observer, {
-    initialize : function(func) {
-        if (func)
-            this.in = func;
-    }
-});
-
-var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, {
-    initialize : function($super, observable, func) {
-        $super(func);
-        this.subscription = observable.subscribe(this);
-    },
-    dispose : function() {
-        this.subscription.dispose();
-    }
-});
 
 var Transformer = Fume.Transformer = clutility(Stream, {
     initialize : function($super, observables) {
@@ -448,6 +471,25 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
             observer.in(Event.value(this.simpleFunction.apply(this, args)));
     }
 });
+
+var Constant = Fume.Constant = clutility(Fume.Stream, {
+    initialize : function($super, value) {
+        $super(false);
+        this.value = value;
+    },
+    replay : function(observer) {
+        observer.in(Event.dirty());
+        observer.in(Event.value(this.value));
+        observer.in(Event.ready());
+    },
+    toString : function() {
+        return "(" + this.value + ")";
+    }
+});
+
+Constant.equals = function(left, right) {
+    return left instanceof Constant && right instanceof Constant && left.value === right.value;
+};
 
 var ChildItem = clutility(Pipe, {
     initialize : function($super, parent, idx, initialValue) {
