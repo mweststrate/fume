@@ -307,16 +307,28 @@ var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, 
     }
 });
 
-var Pipe = Fume.Pipe = clutility(Stream, {
+/**
+    Transformer transforms one stream into another stream, by passing Events trough the transform
+    function.
 
-    initialize : function($super, observable, autoClose){
+    @class
+*/
+var Transformer = Fume.Transformer = clutility(Stream, {
+
+    initialize : function($super, stream, transformFunction, autoClose){
         $super(autoClose === false ? false : true);
 
+        if (transformFunction)
+            this.transform = transformFunction;
+
+        var self = this;
+        this.internalObserver = new AnonymousObserver(function(event){
+                self.out(event);
+        });
+
         observable = Stream.fromValue(observable);
-        this.dirtyCount = 0;
         this.observing = observable;
         this.subscription = observable.subscribe(this);
-        this.isReplaying = false; //for cycle detection
     },
 
     in : function(event) {
@@ -325,19 +337,24 @@ var Pipe = Fume.Pipe = clutility(Stream, {
 
         if (event.isStop())
             this.stop();
-        else if (event.isDirty()) {
-            if (this.dirtyCount === 0)
-                this.out(event); //push dirty
-            this.dirtyCount += 1;
-        }
-        else if (event.isReady()) {
-            this.dirtyCount -= 1;
-            if (this.dirtyCount === 0)
-                this.out(event); //push ready
-        }
-        else {
+        else if (event.isDirty() || event.isReady)
             this.out(event);
-        }
+        else
+            this.transform(this.internalObserver, event);
+    },
+
+    replay : function(observer) {
+        observer.in(Event.dirty());
+        var self = this;
+        this.observing.replay(new AnonymousObserver(function(event) {
+            self.transform(observer, event);
+        }));
+        observer.in(Event.ready());
+    },
+
+    transform : function(observer, event) {
+        //stub implementation, just pass in the events
+        observer.in(event);
     },
 
     stop : function($super) {
@@ -346,6 +363,30 @@ var Pipe = Fume.Pipe = clutility(Stream, {
             this.subscription.dispose();
             this.subscription = null;
         }
+    }
+});
+
+/**
+    A relay is a stream that observes another stream. The stream which it is observing might change
+    over time, by using the `observe` method.
+
+    @class
+*/
+var Relay = Fume.Relay = clutility(Stream, {
+
+    initialize : function($super, stream, autoClose){
+        $super(autoClose === false ? false : true);
+        this.dirtyCount = 0;
+        this.isReplaying = false; //for cycle detection
+
+        this.observe(stream);
+    },
+
+    in : function(event) {
+        if (event.isStop())
+            this.stop();
+        else
+            this.out(event);
     },
 
     replay : function(observer) {
@@ -361,16 +402,25 @@ var Pipe = Fume.Pipe = clutility(Stream, {
         this.isReplaying = false;
     },
 
-    observe : function(observable) {
+    observe : function(stream) {
         if (this.isStopped)
             fail(this + ": cannot perform 'observe', already stopped");
 
-        observable = Stream.fromValue(observable);
-        if (observable != this.observing && !Constant.equals(observable, this.observing)) {
-            this.subscription.dispose();
+        stream = Stream.fromValue(stream);
+        if (stream !== this.observing && !Constant.equals(stream, this.observing)) {
+            if (this.subscription)
+                this.subscription.dispose();
 
-            this.observing = observable;
-            this.subscription = observable.subscribe(this);
+            this.observing = stream;
+            this.subscription = stream.subscribe(this);
+        }
+    },
+
+    stop : function($super) {
+        $super();
+        if (this.subscription) {
+            this.subscription.dispose();
+            this.subscription = null;
         }
     }
 });
@@ -472,7 +522,16 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
     }
 });
 
+/**
+    A constant is a stream that is initialized by a single value and will not change over time.
+    Each observer that subscribes to the constant will receive its initial value.
+
+    @class
+*/
 var Constant = Fume.Constant = clutility(Fume.Stream, {
+    /**
+        @param {Any} value - The initial value of the constant.
+    */
     initialize : function($super, value) {
         $super(false);
         this.value = value;
