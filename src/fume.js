@@ -342,9 +342,6 @@ var Transformer = Fume.Transformer = clutility(Stream, {
     },
 
     in : function(event) {
-        if (!this.hasObservers()) //Optimization
-            return;
-
         if (event.isStop())
             this.stop();
         else if (event.isDirty() || event.isReady())
@@ -506,40 +503,27 @@ var Merge = Fume.Merge = clutility(Stream, {
     A primitve transformer takes a function which accepts native JS values and a bunch of streams.
     Based on the merge of the strams the function will be applied, and the return value of the function will be emitted.
 */
-    var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Stream, {
+    var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
     initialize : function($super, func, streams) {
         var self = this;
+        this.simpleFunc = func;
         this.latestEvent = null;
 
-        this.mergeStream = new Merge(streams);
-        this.transformStream =  new Transformer(this.mergeStream, function(observer, event) {
-            try {
-                var args = event.value;
-                observer.in(Event.value(func.apply(this, args)));
-            } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
-                debugger;
-                observer.in(Event.error(e));
-            }
-        });
-        this.transformStreamObserver = new DisposableObserver(this.transformStream, function(event){
-            if (event.isStop())
-                this.stop();
-            else if (event.isReady() || event.isDirty())
-                self.out(event);
-            else
-                self.out(self.latestEvent = event);
-        });
-
-        $super();
+        $super(new Merge(streams), null);
+    },
+    transform : function(observer, event) {
+     try {
+            var args = event.value;
+            observer.in(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
+        } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
+            debugger;
+            observer.in(Event.error(e));
+        }
     },
     replay : function(observer) {
         observer.in(Event.dirty());
         observer.in(this.latestEvent);
         observer.in(Event.ready());
-    },
-    stop : function($super) {
-        this.transformStreamObserver.dispose();
-        $super();
     }
 });
 
