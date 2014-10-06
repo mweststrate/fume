@@ -49,9 +49,9 @@ exports.testObservable2 = function(test) {
 	test.done();
 };
 
-exports.testPipe1 = function(test) {
+exports.testRelay1 = function(test) {
 	var b = new Fume.ValueBuffer();
-	var p = new Fume.Pipe(3);
+	var p = new Fume.Relay(3);
 	var s1 = p.subscribe(b);
 
 	p.observe(4);
@@ -82,7 +82,7 @@ exports.testPipe1 = function(test) {
 };
 
 exports.testCycleDetection = function(test) {
-	var p = new Fume.Pipe(3);
+	var p = new Fume.Relay(3);
 	var last;
 
 	var sub = p.subscribe(function(value) {
@@ -107,11 +107,11 @@ exports.testCycleDetection = function(test) {
 	test.done();
 };
 
-exports.testMultiply = function(test) {
+exports.testStuff = function(test) {
 	var b = new Fume.ValueBuffer();
 	var b2 = new Fume.ValueBuffer();
 
-	var a = new F.Pipe("once");
+	var a = new F.Relay("once");
 	a.subscribe(b);
 	a.observe("twice");
 	a.subscribe(b2);
@@ -122,7 +122,7 @@ exports.testMultiply = function(test) {
 
 	b.reset();
 	b2.reset();
-	var x = new F.Pipe("never");
+	var x = new F.Relay("never");
 	x.observe("once");
 	var unsub = x.subscribe(b);
 	x.observe("another twice");
@@ -134,11 +134,15 @@ exports.testMultiply = function(test) {
 
 	test.deepEqual(b.buffer, ["once", "another twice"]);
 	test.deepEqual(b2.buffer, ["another twice", "third"]);
+	test.done();
+};
 
+exports.testMultiply = function(test) {
+	debugger;
+	var b = new Fume.ValueBuffer();
 
 	// testing basic function and atomicity
-	b.reset();
-	x = new F.Pipe(2);
+	x = new F.Relay(2);
 
 	var z = F.multiply(x, x).subscribe(b);
 
