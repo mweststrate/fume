@@ -394,7 +394,9 @@ var Relay = Fume.Relay = clutility(Stream, {
     },
 
     in : function(event) {
-        if (event.isStop())
+        if (!this.hasObservers())
+            return;
+        else if (event.isStop())
             this.stop();
         else
             this.out(event);
@@ -479,27 +481,7 @@ var Merge = Fume.Merge = clutility(Stream, {
     },
     replay : function(observer) {
         observer.in(Event.dirty());
-        /*
-            replay all inputs, save the state
-        */
-        var states = [];
-        _.forEach(this.inputStreams, function(observable, idx) {
-            states[idx] = [];
-            observable.replay(new AnonymousObserver(function(event){
-                if (!event.isDirty() && !event.isReady()) {
-                    if (event.isComplexEvent())
-                        states[idx] = Event.error("Complex events are not supported by Merge");
-                    else
-                        states[idx] = event;
-                }
-            }));
-        });
-
-        /*
-            apply process on the inputs
-        */
-        observer.in(this.statesToEvent(states));
-
+        observer.in(this.statesToEvent(this.inputStates));
         observer.in(Event.ready());
     },
     statesToEvent : function(states) {
@@ -524,22 +506,40 @@ var Merge = Fume.Merge = clutility(Stream, {
     A primitve transformer takes a function which accepts native JS values and a bunch of streams.
     Based on the merge of the strams the function will be applied, and the return value of the function will be emitted.
 */
-var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
+    var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Stream, {
     initialize : function($super, func, streams) {
-        this.simpleFunction = func;
-        this.mergeStream = new Merge(streams);
+        var self = this;
+        this.latestEvent = null;
 
-        //this transformer transforms the outpot of the mergeStream by sending it trough our own transform functino
-        $super(this.mergeStream, null);
+        this.mergeStream = new Merge(streams);
+        this.transformStream =  new Transformer(this.mergeStream, function(observer, event) {
+            try {
+                var args = event.value;
+                observer.in(Event.value(func.apply(this, args)));
+            } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
+                debugger;
+                observer.in(Event.error(e));
+            }
+        });
+        this.transformStreamObserver = new DisposableObserver(this.transformStream, function(event){
+            if (event.isStop())
+                this.stop();
+            else if (event.isReady() || event.isDirty())
+                self.out(event);
+            else
+                self.out(self.latestEvent = event);
+        });
+
+        $super();
     },
-    transform : function(observer, event) {
-        try {
-            var args = event.value;
-            observer.in(Event.value(this.simpleFunction.apply(this, args)));
-        } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow...
-            debugger;
-            observer.in(Event.error(e));
-        }
+    replay : function(observer) {
+        observer.in(Event.dirty());
+        observer.in(this.latestEvent);
+        observer.in(Event.ready());
+    },
+    stop : function($super) {
+        this.transformStreamObserver.dispose();
+        $super();
     }
 });
 
