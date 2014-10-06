@@ -571,6 +571,13 @@ Constant.equals = function(left, right) {
     return left instanceof Constant && right instanceof Constant && left.value === right.value;
 };
 
+/**
+    ChildItem is a Relay, contained by a complex object (list or dict). It has a notion of a parent position
+    and when it starts observing a new stream, it will notify its parent so that the proper events can be triggered.
+
+    @class
+    @private
+*/
 var ChildItem = clutility(Relay, {
     initialize : function($super, parent, idx, initialValue) {
         this.parent = parent;
@@ -608,6 +615,12 @@ var ChildItem = clutility(Relay, {
     }
 });
 
+/**
+    A list presents an ordered set of values / streams and provides functions to manipulate the individual streams,
+    but proved combined streams with special events as well.
+
+    @class
+*/
 var List = Fume.List = clutility(Stream, {
     initialize : function($super) {
         $super();
@@ -615,39 +628,59 @@ var List = Fume.List = clutility(Stream, {
         this.lengthPipe = new Stream();
     },
 
-    insert : function(idx, value) {
+    /**
+        Inserts a new item to this list at the specified index.
+
+        @param {Integer} index - Position where the item should be inserted. Should be positive, and smaller or equal to the length of this list
+        @param {Any} value - Value to be inserted at the specified position. Will be converted to a Stream if necessary.
+    */
+    insert : function(index, value) {
         this.markDirty(true);
 
-        var item = new ChildItem(this, idx, value);
-        this.items.splice(idx, 0, item);
-        for (var i = idx + 1; i < this.items.length; i++)
+        var item = new ChildItem(this, index, value);
+        this.items.splice(index, 0, item);
+        for (var i = index + 1; i < this.items.length; i++)
             this.items[i].index += 1;
 
-        this.out(Event.insert(idx, item.get()));
+        this.out(Event.insert(index, item.get()));
         this.lengthPipe.out(Event.value(this.items.length));
 
         this.markReady(true);
     },
 
-    set : function(idx, value) {
-        this.items[idx].set(value);
+    /**
+        Updates the value at the specified index. This will replace any stream which is already in there
+
+        @param {Integer} index - Index of the item to be updated. Should be positive and smaller than the length of the List
+        @param {Any} value - the new value. Will be converted into a stream if necessary.
+    */
+    set : function(index, value) {
+        this.items[index].set(value);
     },
 
-    remove : function(idx) {
+    /**
+        Removes the item at the specified index
+
+        @param {Integer} index - Index of the item to be removed. Should be positive and smaller than the length of the List
+    */
+    remove : function(index) {
         this.markDirty(true);
 
-        var item = this.items[idx];
-        this.items.splice(idx, 1);
-        for (var i = idx ; i < this.items.length; i++)
+        var item = this.items[index];
+        this.items.splice(index, 1);
+        for (var i = index ; i < this.items.length; i++)
             this.items[i].index -= 1;
 
-        this.out(Event.remove(idx));
+        this.out(Event.remove(index));
         this.lengthPipe.out(Event.value(this.items.length));
         item.stop();
 
         this.markReady(true);
     },
 
+    /**
+        Removes all items from this list
+    */
     clear : function() {
         if (this.length === 0)
             return;
@@ -664,6 +697,9 @@ var List = Fume.List = clutility(Stream, {
         this.markReady(true);
     },
 
+    /**
+        Returns a Stream to which the length of this list will be emitted, whenever it changes
+    */
     length : function() {
         return this.lengthPipe;
     },
@@ -676,10 +712,21 @@ var List = Fume.List = clutility(Stream, {
         observer.in(Event.ready());
     },
 
+    /**
+        Shorthand for inserting an item at the last position of this list.
+
+        @see List#insert
+    */
     add : function(value) {
         this.insert(this.items.length, value);
     },
 
+    /**
+        Returns the Stream which is stored at the specified index. The stream will be bound to the value which is
+        *currently* at the specified index.
+
+        @param {Integer} index - Stream to be requested. Should be positive and smaller than the length of this list.
+    */
     get : function(index) {
         return this.items[index];
     },
