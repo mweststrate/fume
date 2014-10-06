@@ -140,11 +140,8 @@ var Stream = Fume.Stream = clutility({
 
     /**
         Create a new stream.
-
-        @param {Boolean} autoClose - automatically stop this observer if the last observer has left
     */
-    initialize : function(autoClose) {
-        this.autoClose = autoClose;
+    initialize : function() {
         this.isStopped = false;
         this.observersIdx = 0;
         this.observers = {};
@@ -189,7 +186,7 @@ var Stream = Fume.Stream = clutility({
     */
     unsubcribe : function(disposable) {
          delete this.observers[disposable.observerId];
-         if (this.autoClose && !this.hasObservers())
+         if (!this.hasObservers())
             this.stop();
     },
 
@@ -328,8 +325,8 @@ var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, 
 */
 var Transformer = Fume.Transformer = clutility(Stream, {
 
-    initialize : function($super, stream, transformFunction, autoClose){
-        $super(autoClose === false ? false : true);
+    initialize : function($super, stream, transformFunction){
+        $super();
 
         if (transformFunction)
             this.transform = transformFunction;
@@ -388,8 +385,8 @@ var Transformer = Fume.Transformer = clutility(Stream, {
 */
 var Relay = Fume.Relay = clutility(Stream, {
 
-    initialize : function($super, stream, autoClose){
-        $super(autoClose === false ? false : true);
+    initialize : function($super, stream){
+        $super();
         this.dirtyCount = 0;
         this.isReplaying = false; //for cycle detection
 
@@ -447,7 +444,7 @@ var Relay = Fume.Relay = clutility(Stream, {
 */
 var Merge = Fume.Merge = clutility(Stream, {
     initialize : function($super, streams) {
-        $super(true);
+        $super();
         this.inputStreams = _.map(streams, Stream.fromValue);
         this.inputDirtyCount = 0;
         this.inputStates = []; //last event per input
@@ -533,7 +530,7 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
         this.mergeStream = new Merge(streams);
 
         //this transformer transforms the outpot of the mergeStream by sending it trough our own transform functino
-        $super(this.mergeStream, null, true);
+        $super(this.mergeStream, null);
     },
     transform : function(observer, event) {
         try {
@@ -557,7 +554,7 @@ var Constant = Fume.Constant = clutility(Fume.Stream, {
         @param {Any} value - The initial value of the constant.
     */
     initialize : function($super, value) {
-        $super(false);
+        $super();
         this.value = value;
     },
     replay : function(observer) {
@@ -579,7 +576,7 @@ var ChildItem = clutility(Relay, {
         this.parent = parent;
         this.index = idx;
         this.isStarting = true;
-        $super(initialValue, false);
+        $super(initialValue);
         this.isStarting = false;
     },
     observe : function($super, newValue) {
@@ -613,9 +610,9 @@ var ChildItem = clutility(Relay, {
 
 var List = Fume.List = clutility(Stream, {
     initialize : function($super) {
-        $super(false);
+        $super();
         this.items = [];
-        this.lengthPipe = new Stream(false);
+        this.lengthPipe = new Stream();
     },
 
     insert : function(idx, value) {
