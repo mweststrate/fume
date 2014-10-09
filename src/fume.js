@@ -478,30 +478,56 @@ var Merge = Fume.Merge = clutility(Stream, {
         else
             this.inputStates[inputIndex] = event;
     },
-    replay : function(observer) {
-        observer.in(Event.dirty());
+    replay : function() {
+        this.out(Event.dirty());
+        
         /*
             replay all inputs, save the state
         */
         var states = [];
-        _.forEach(this.inputStreams, function(observable, idx) {
+        _.forEach(this.inputStreams, function(stream, idx) {
             states[idx] = [];
-            observable.replay(new AnonymousObserver(function(event){
+            stream.replayForObserver(new AnonymousObserver(function(event){
                 if (!event.isDirty() && !event.isReady()) {
                     if (event.isComplexEvent())
-                        states[idx] = Event.error("Complex events are not supported by Merge");
+                        states[idx].push(Event.error("Complex events are not supported by Merge"));
                     else
-                        states[idx] = event;
+                        states[idx].push(event);
                 }
             }));
         });
 
         /*
-            apply process on the inputs
-        */
-        observer.in(this.statesToEvent(states));
+            replay all past states, such that each state has past at least ones:
+            A: 1 - 2 - 3
+            B: 1
+            C: 1 - 2
 
-        observer.in(Event.ready());
+            will be replayed as
+            [1,1,1]
+            [1,1,2]
+            [2,1,1]
+            [3,1,1]
+         */
+        var curStream = states.length - 1;
+        while (curStream > 0) {
+            var args = [];
+            for (var i = states.length - 1; i >= 0; i--) {
+                if (i != curStream)
+                    args[i] = states[i][0];
+                else if (i == curStream) {
+                    if (states[i].length > 1)
+                        args[i] = states[i].shift();
+                    else {
+                        args[i] = states[i][0];
+                        curStream -= 1;
+                    }
+                }
+            }
+            this.out(this.statesToEvent(args));
+        }
+
+        this.out(Event.ready());
     },
     statesToEvent : function(states) {
         var values = [];
