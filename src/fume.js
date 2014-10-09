@@ -162,7 +162,7 @@ var Stream = Fume.Stream = clutility({
         if (typeof observer === "function")
             observer = new AnonymousObserver(observer);
 
-        this.replay(observer);
+        this.replayForObserver(observer);
 
         this.observersIdx += 1;
         this.observers[this.observersIdx] = observer;
@@ -208,6 +208,16 @@ var Stream = Fume.Stream = clutility({
     */
     replay : function(observer) {
         //stub
+    },
+
+    /**
+     * Replays this stream for a specific observer only
+     */
+    replayForObserver : function(observer) {
+        var observers = this.observers;
+        this.observers = { tmp : observer };
+        this.replay();
+        this.observers = observers;
     },
 
     /**
@@ -331,11 +341,6 @@ var Transformer = Fume.Transformer = clutility(Stream, {
         if (transformFunction)
             this.transform = transformFunction;
 
-        var self = this;
-        this.sink = new AnonymousObserver(function(event){
-            self.out(event);
-        });
-
         stream = Stream.fromValue(stream);
         this.observing = stream;
         this.subscription = stream.subscribe(this);
@@ -350,22 +355,18 @@ var Transformer = Fume.Transformer = clutility(Stream, {
         else if (event.isDirty() || event.isReady())
             this.out(event);
         else
-            this.transform(this.sink, event);
+            this.transform(event);
     },
 
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        var self = this;
-        this.observing.replay(new AnonymousObserver(function(event) {
-            if (!event.isDirty() && !event.isReady())
-                self.transform(observer, event);
-        }));
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.observing.replayForObserver(this);
+        this.out(Event.ready());
     },
 
-    transform : function(observer, event) {
+    transform : function(event) {
         //stub implementation, just pass in the events
-        observer.in(event);
+        this.out(event);
     },
 
     stop : function($super) {
@@ -400,16 +401,16 @@ var Relay = Fume.Relay = clutility(Stream, {
             this.out(event);
     },
 
-    replay : function(observer) {
+    replay : function() {
         if (this.isReplaying) {
             //replay() is called before the observer is registered using subscribe,
             //so we can push the error without introducing unendless recursion
-            observer.out(Event.error("cycle_detected", "Detected cycle in " + this));
+            this.out(Event.error("cycle_detected", "Detected cycle in " + this));
             return;
         }
 
         this.isReplaying = true;
-        this.observing.replay(observer);
+        this.observing.replayForObserver(this);
         this.isReplaying = false;
     },
 
@@ -532,13 +533,13 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
         //this transformer transforms the outpot of the mergeStream by sending it trough our own transform functino
         $super(this.mergeStream, null);
     },
-    transform : function(observer, event) {
+    transform : function(event) {
         try {
             var args = event.value;
-            observer.in(Event.value(this.simpleFunction.apply(this, args)));
+            this.out(Event.value(this.simpleFunction.apply(this, args)));
         } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow...
             debugger;
-            observer.in(Event.error(e));
+            this.out(Event.error(e));
         }
     }
 });
@@ -557,10 +558,10 @@ var Constant = Fume.Constant = clutility(Fume.Stream, {
         $super();
         this.value = value;
     },
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(Event.value(this.value));
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(Event.value(this.value));
+        this.out(Event.ready());
     },
     toString : function() {
         return "(" + this.value + ")";
@@ -704,12 +705,12 @@ var List = Fume.List = clutility(Stream, {
         return this.lengthPipe;
     },
 
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(Event.clear());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(Event.clear());
         for(var i = 0, l = this.items.length; i < l; i++)
-            observer.in(Event.insert(i, this.items[i].get()));
-        observer.in(Event.ready());
+            this.out(Event.insert(i, this.items[i].get()));
+        this.out(Event.ready());
     },
 
     /**
