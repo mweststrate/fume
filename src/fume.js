@@ -1,7 +1,6 @@
 /* jshint immed:true, latedef:true, newcap:true, browser:true, node:true */
 
 var _ = require("lodash");
-var Rx  = require("rx");
 var clutility = require("clutility");
 
 /** @namespace Fume */
