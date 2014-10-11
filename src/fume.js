@@ -527,7 +527,7 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
     A primitve transformer takes a function which accepts native JS values and a bunch of streams.
     Based on the merge of the streams the function will be applied, and the return value of the function will be emitted.
 */
-    var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
+var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
     initialize : function($super, func, streams) {
         var self = this;
         this.simpleFunc = func;
@@ -536,12 +536,8 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
         $super(new LatestEventMerger(streams), null);
     },
     transform : function(event) {
-     try {
-            var args = event.value;
-            this.out(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
-        } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
-            this.out(Event.error(e));
-        }
+        var args = event.value;
+        this.out(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
     },
     replay : function() {
         this.out(Event.dirty());
