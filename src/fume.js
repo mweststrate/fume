@@ -90,7 +90,10 @@ var Event = Fume.Event = clutility({
         return this.type in { CLEAR : 1, INSERT : 1, REMOVE : 1, UPDATE : 1};
     },
     toString : function() {
-        return JSON.stringify(this);
+        var res = {};
+        for (var key in this) if (this.hasOwnProperty(key))
+            res[key] = res[key] instanceof Object ? res[key].toString() : res[key];
+        return JSON.stringify(res);
     }
 });
 Event.stop = function() {
