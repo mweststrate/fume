@@ -167,7 +167,7 @@ var Stream = Fume.Stream = clutility({
         if (typeof observer === "function")
             observer = new AnonymousObserver(observer);
 
-        this.replay(observer);
+        this.replayForObserver(observer);
 
         this.observersIdx += 1;
         this.observers[this.observersIdx] = observer;
@@ -213,6 +213,16 @@ var Stream = Fume.Stream = clutility({
     */
     replay : function(observer) {
         //stub
+    },
+
+    /**
+     * Replays this stream for a specific observer only
+     */
+    replayForObserver : function(observer) {
+        var observers = this.observers;
+        this.observers = { tmp : observer };
+        this.replay();
+        this.observers = observers;
     },
 
     /**
@@ -351,11 +361,6 @@ var Transformer = Fume.Transformer = clutility(Stream, {
         if (transformFunction)
             this.transform = transformFunction;
 
-        var self = this;
-        this.sink = new AnonymousObserver(function(event){
-            self.out(event);
-        });
-
         stream = Stream.fromValue(stream);
         this.observing = stream;
         this.subscription = stream.subscribe(this);
@@ -367,22 +372,18 @@ var Transformer = Fume.Transformer = clutility(Stream, {
         else if (event.isDirty() || event.isReady())
             this.out(event);
         else
-            this.transform(this.sink, event);
+            this.transform(event);
     },
 
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        var self = this;
-        this.observing.replay(new AnonymousObserver(function(event) {
-            if (!event.isDirty() && !event.isReady())
-                self.transform(observer, event);
-        }));
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.observing.replayForObserver(this);
+        this.out(Event.ready());
     },
 
-    transform : function(observer, event) {
+    transform : function(event) {
         //stub implementation, just pass in the events
-        observer.in(event);
+        this.out(event);
     },
 
     stop : function($super) {
@@ -461,7 +462,7 @@ var Relay = Fume.Relay = clutility(Stream, {
 
     @class
 */
-var Merge = Fume.Merge = clutility(Stream, {
+var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
     initialize : function($super, streams) {
         $super();
         this.inputStreams = _.map(streams, Stream.fromValue);
@@ -492,14 +493,14 @@ var Merge = Fume.Merge = clutility(Stream, {
             }
         }
         else if (event.isComplexEvent())
-            this.inputStates[inputIndex] = Event.error("Complex events are not supported by Merge");
+            this.inputStates[inputIndex] = Event.error("Complex events are not supported by LatestEventMerger");
         else
             this.inputStates[inputIndex] = event;
     },
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(this.statesToEvent(this.inputStates));
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(this.statesToEvent(this.inputStates));
+        this.out(Event.ready());
     },
     statesToEvent : function(states) {
         var values = [];
@@ -521,7 +522,7 @@ var Merge = Fume.Merge = clutility(Stream, {
 
 /**
     A primitve transformer takes a function which accepts native JS values and a bunch of streams.
-    Based on the merge of the strams the function will be applied, and the return value of the function will be emitted.
+    Based on the merge of the streams the function will be applied, and the return value of the function will be emitted.
 */
     var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
     initialize : function($super, func, streams) {
@@ -529,21 +530,21 @@ var Merge = Fume.Merge = clutility(Stream, {
         this.simpleFunc = func;
         this.latestEvent = null;
 
-        $super(new Merge(streams), null);
+        $super(new LatestEventMerger(streams), null);
     },
-    transform : function(observer, event) {
+    transform : function(event) {
      try {
             var args = event.value;
-            observer.in(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
+            this.out(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
         } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
             debugger;
-            observer.in(Event.error(e));
+            this.out(Event.error(e));
         }
     },
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(this.latestEvent);
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(this.latestEvent);
+        this.out(Event.ready());
     }
 });
 
@@ -561,10 +562,10 @@ var Constant = Fume.Constant = clutility(Fume.Stream, {
         $super();
         this.value = value;
     },
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(Event.value(this.value));
-        observer.in(Event.ready());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(Event.value(this.value));
+        this.out(Event.ready());
     },
     toString : function() {
         return "(" + this.value + ")";
@@ -708,12 +709,12 @@ var List = Fume.List = clutility(Stream, {
         return this.lengthPipe;
     },
 
-    replay : function(observer) {
-        observer.in(Event.dirty());
-        observer.in(Event.clear());
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(Event.clear());
         for(var i = 0, l = this.items.length; i < l; i++)
-            observer.in(Event.insert(i, this.items[i].get()));
-        observer.in(Event.ready());
+            this.out(Event.insert(i, this.items[i].get()));
+        this.out(Event.ready());
     },
 
     /**
