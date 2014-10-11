@@ -81,7 +81,7 @@ exports.testRelay1 = function(test) {
 	test.done();
 };
 
-exports.testCycleDetection = function(test) {
+exports.testCycleDetection1 = function(test) {
 	var p = new Fume.Relay(3);
 	var last;
 
@@ -104,6 +104,31 @@ exports.testCycleDetection = function(test) {
 	sub.dispose();
 	test.ok(!p.hasObservers());
 	test.ok(p.isStopped);
+	test.done();
+};
+
+exports.testCycleDetection2 = function(test) {
+	//Fume.trace = true;
+	var p = new Fume.Relay(3).setName("p");
+	var p2 = new Fume.Relay(p).setName("p2");
+	var last;
+
+	var sub = p2.subscribe(function(value) {
+		if (!value.isReady() && !value.isDirty())
+			last = value;
+	});
+
+	test.equals(last.value, 3);
+	p.observe(p2);
+
+	test.ok(last.isError());
+
+	test.equals(last.code, "cycle_detected");
+
+	p.observe(1);
+
+	test.equals(last.value, 1);
+
 	test.done();
 };
 

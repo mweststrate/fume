@@ -406,31 +406,27 @@ var Relay = Fume.Relay = clutility(Stream, {
     initialize : function($super, stream){
         $super();
         this.dirtyCount = 0;
-        this.isReplaying = false; //for cycle detection
+        this.isSwitchingObserver = false;
+        this.cycleDetected = false;
 
         this.observe(stream);
     },
 
     in : function(event) {
-        if (!this.hasObservers())
-            return;
+        if (!this.hasObservers()) {
+            //empty block
+        }
         else if (event.isStop())
             this.stop();
         else
             this.out(event);
     },
 
-    replay : function(observer) {
-        if (this.isReplaying) {
-            //replay() is called before the observer is registered using subscribe,
-            //so we can push the error without introducing unendless recursion
-            observer.out(Event.error("cycle_detected", "Detected cycle in " + this));
-            return;
-        }
-
-        this.isReplaying = true;
-        this.observing.replay(observer);
-        this.isReplaying = false;
+    replay : function() {
+        if (this.isSwitchingObserver)
+            this.cycleDetected = true;
+        else
+            this.observing.replayForObserver(this);
     },
 
     observe : function(stream) {
@@ -439,11 +435,18 @@ var Relay = Fume.Relay = clutility(Stream, {
 
         stream = Stream.fromValue(stream);
         if (stream !== this.observing && !Constant.equals(stream, this.observing)) {
+            this.isSwitchingObserver = true;
             if (this.subscription)
                 this.subscription.dispose();
 
             this.observing = stream;
             this.subscription = stream.subscribe(this);
+
+            if (this.cycleDetected) {
+                this.cycleDetected = false;
+                this.observe(new FumeError("cycle_detected", "Circular reference detected in '" + this.toString() + "'"));
+            }
+            this.isSwitchingObserver = false;
         }
     },
 
@@ -537,7 +540,6 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
             var args = event.value;
             this.out(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
         } catch(e) { //TODO: is catch responsibility of primitive transformer? it is slow... or from the base transformer?
-            debugger;
             this.out(Event.error(e));
         }
     },
@@ -575,6 +577,31 @@ var Constant = Fume.Constant = clutility(Fume.Stream, {
 Constant.equals = function(left, right) {
     return left instanceof Constant && right instanceof Constant && left.value === right.value;
 };
+
+/**
+ * FumeError is a constant that is used to indicate that an error occurred.
+ * The FumeError class will emit `error` events.
+ *
+ * @class
+ * @param  {String} code     Machine recognizable code of the error. Should not change over time
+ * @param  {[type]} error    Description of the error
+ */
+var FumeError = Fume.FumeError = clutility(Fume.Stream, {
+    initialize : function($super, code, error) {
+        $super();
+        this.code = code;
+        this.error = error;
+    },
+    replay : function() {
+        this.out(Event.dirty());
+        this.out(Event.error(this.code, this.error));
+        this.out(Event.ready());
+    },
+    toString : function() {
+        return "FumeError(" + this.code + ", " + this.error  + ")";
+    }
+});
+
 
 /**
     ChildItem is a Relay, contained by a complex object (list or dict). It has a notion of a parent position
