@@ -6,6 +6,8 @@ var clutility = require("clutility");
 /** @namespace Fume */
 var Fume = Fume || {};
 
+Fume.trace = false;
+
 /** @namespace Fume.util */
 Fume.util = {};
 
@@ -144,6 +146,7 @@ var Stream = Fume.Stream = clutility({
         this.isStopped = false;
         this.observersIdx = 0;
         this.observers = {};
+        this.name = "STREAM";
     },
 
     /**
@@ -216,6 +219,7 @@ var Stream = Fume.Stream = clutility({
         @param {Event} - event to be passed to the subscribers
     */
     out : function(value) {
+        this.trace("OUT: " + value);
         if (this.enableLogging)
             console.log(value);
 
@@ -241,6 +245,20 @@ var Stream = Fume.Stream = clutility({
             this.out(Event.stop());
         this.isStopped = true;
         this.observers = null;
+    },
+
+    setName : function(name) {
+        this.name = name;
+        return this;
+    },
+
+    trace : function(msg) {
+        if (Fume.trace)
+            console.log(this + ": " + msg);
+    },
+
+    toString : function() {
+        return _.isFunction(this.name) ? this.name() : this.name;
     }
 });
 
