@@ -233,3 +233,26 @@ exports.list1 = function(test) {
 	]);
 	test.done();
 };
+
+exports.listMultiInsert = function(test) {
+	var lb = new F.ValueBuffer();
+	var lbe = new F.EventTypeBuffer();
+	var e = new F.EventTypeBuffer();
+	var l = new F.List();
+
+	l.length().subscribe(lbe);
+	l.subscribe(e);
+	l.addAll([1,4]);
+	l.insertAll(1, [2,3]);
+	l.removeRange(2,2);
+
+	test.deepEqual(l.toArray(), [1,2]);
+
+	test.deepEqual(e.buffer, [
+		"DIRTY", "CLEAR", "READY",
+		"DIRTY", "INSERT", "INSERT", "READY",
+		"DIRTY", "INSERT", "INSERT", "READY",
+		"DIRTY", "REMOVE", "REMOVE", "READY"
+	]);
+	test.done();
+};

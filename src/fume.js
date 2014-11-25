@@ -663,17 +663,7 @@ var List = Fume.List = clutility(Stream, {
 		@param {Any} value - Value to be inserted at the specified position. Will be converted to a Stream if necessary.
 	*/
 	insert : function(index, value) {
-		this.markDirty(true);
-
-		var item = new ChildItem(this, index, value);
-		this.items.splice(index, 0, item);
-		for (var i = index + 1; i < this.items.length; i++)
-			this.items[i].index += 1;
-
-		this.out(Event.insert(index, item.get()));
-		this.lengthPipe.out(Event.value(this.items.length));
-
-		this.markReady(true);
+		this.insertAll(index, [value]);
 	},
 
 	/**
@@ -692,16 +682,21 @@ var List = Fume.List = clutility(Stream, {
 		@param {Integer} index - Index of the item to be removed. Should be positive and smaller than the length of the List
 	*/
 	remove : function(index) {
+		this.removeRange(index, 1);
+	},
+
+	removeRange : function(index, amount) {
 		this.markDirty(true);
 
-		var item = this.items[index];
-		this.items.splice(index, 1);
-		for (var i = index ; i < this.items.length; i++)
-			this.items[i].index -= 1;
+		this.items.splice(index, amount).forEach(function(item){
+			this.out(Event.remove(item.index));
+			item.stop();
+		}, this);
 
-		this.out(Event.remove(index));
+		for (var i = index; i < this.items.length; i++)
+			this.items[i].index -= amount;
+
 		this.lengthPipe.out(Event.value(this.items.length));
-		item.stop();
 
 		this.markReady(true);
 	},
@@ -747,6 +742,29 @@ var List = Fume.List = clutility(Stream, {
 	*/
 	add : function(value) {
 		this.insert(this.items.length, value);
+	},
+
+	addAll : function(values) {
+		this.insertAll(this.items.length, values);
+	},
+
+	insertAll : function(index, values) {
+		this.markDirty(true);
+
+		//create and insert the items
+		var toInsert = values.map(function(value, i) {
+			var child = new ChildItem(this, index + i, value);
+			this.out(Event.insert(index + i, child.get()));
+			return child;
+		}, this);
+		this.items.splice.apply(this.items, [index, 0].concat(toInsert));
+
+		//update indexes
+		for (var i = index + values.length; i < this.items.length; i++)
+			this.items[i].index += values.length;
+
+		this.lengthPipe.out(Event.value(this.items.length));
+		this.markReady(true);
 	},
 
 	/**
@@ -796,6 +814,12 @@ var List = Fume.List = clutility(Stream, {
 Stream.fromValue = function(value) {
 	if (value instanceof Stream)
 		return value;
+	if (_.isArray(value)) {
+		var l = new List();
+		l.addAll(value);
+		return l;
+	}
+
 	return new Constant(value); //TODO: list, record, error, function...
 };
 
