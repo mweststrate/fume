@@ -663,7 +663,7 @@ var List = Fume.List = clutility(Stream, {
 		@param {Any} value - Value to be inserted at the specified position. Will be converted to a Stream if necessary.
 	*/
 	insert : function(index, value) {
-		this.insertAll(index, [value]);
+		return this.insertAll(index, [value]);
 	},
 
 	/**
@@ -674,6 +674,7 @@ var List = Fume.List = clutility(Stream, {
 	*/
 	set : function(index, value) {
 		this.items[index].set(value);
+		return this;
 	},
 
 	/**
@@ -682,7 +683,7 @@ var List = Fume.List = clutility(Stream, {
 		@param {Integer} index - Index of the item to be removed. Should be positive and smaller than the length of the List
 	*/
 	remove : function(index) {
-		this.removeRange(index, 1);
+		return this.removeRange(index, 1);
 	},
 
 	removeRange : function(index, amount) {
@@ -699,6 +700,7 @@ var List = Fume.List = clutility(Stream, {
 		this.lengthPipe.out(Event.value(this.items.length));
 
 		this.markReady(true);
+		return this;
 	},
 
 	/**
@@ -718,6 +720,7 @@ var List = Fume.List = clutility(Stream, {
 		this.lengthPipe.out(Event.value(0));
 
 		this.markReady(true);
+		return this;
 	},
 
 	/**
@@ -733,6 +736,7 @@ var List = Fume.List = clutility(Stream, {
 		for(var i = 0, l = this.items.length; i < l; i++)
 			this.out(Event.insert(i, this.items[i].get()));
 		this.out(Event.ready());
+		return this;
 	},
 
 	/**
@@ -741,11 +745,11 @@ var List = Fume.List = clutility(Stream, {
 		@see List#insert
 	*/
 	add : function(value) {
-		this.insert(this.items.length, value);
+		return this.insert(this.items.length, value);
 	},
 
 	addAll : function(values) {
-		this.insertAll(this.items.length, values);
+		return this.insertAll(this.items.length, values);
 	},
 
 	insertAll : function(index, values) {
@@ -765,6 +769,7 @@ var List = Fume.List = clutility(Stream, {
 
 		this.lengthPipe.out(Event.value(this.items.length));
 		this.markReady(true);
+		return this;
 	},
 
 	/**
@@ -798,12 +803,14 @@ var List = Fume.List = clutility(Stream, {
 		this.out(Event.dirty());
 		if (includeLength)
 			this.lengthPipe.out(Event.dirty());
+		return this;
 	},
 
 	markReady : function(includeLength) {
 		this.out(Event.ready());
 		if (includeLength)
 			this.lengthPipe.out(Event.ready());
+		return this;
 	},
 
 	toString : function() {
