@@ -58,5 +58,39 @@ mapper = (y) -> y + 3;
 //prints [4,5,6,8]
 ````
 
+# Extended example
+
+```javascript
+
+val transactions = [];
+
+val BankAccount = {
+	balance =
+		transactions.filter(t => t.to = this).map(t.amount).sum()
+		-
+		transactions.filter(t => t.from = this).map(t.amount).sum()
+}
+
+val tarzan = new BankAccount();
+var jane = new BankAccount();
+val bankTotal = tarzan.balance + jane.balance
+
+tarzan.balance.subscribe(console.log);
+jane.balance.subscribe(console.log);
 
 
+transactions.add({ from : 'bank', to: tarzan, amount: 30})
+//prints 30
+//prints 30
+transactions.add({ from : 'bank', to: jane, amount: 200})
+//prints 200
+//prints 230
+transactions.add({ from : jane, to: tarzan, amount: 40})
+//prints 70
+//prints 160
+//prints 230
+transactions.add({ from : tarzan, to: jane, amount: 2})
+//prints 68
+//prints 162
+//prints 230
+```
