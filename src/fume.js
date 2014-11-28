@@ -120,8 +120,8 @@ Event.insert = function(index, value) {
 Event.remove = function(index, value) {
 	return new Event("REMOVE", { index : index, value : value});
 };
-Event.update = function(index, value, oldvalue) {
-	return new Event("UPDATE", { index : index, value : value, oldvalue : oldvalue });
+Event.update = function(index, value) {
+	return new Event("UPDATE", { index : index, value : value });
 };
 
 /**
@@ -627,7 +627,7 @@ var ChildItem = clutility(Relay, {
 			this.parent.markDirty(false);
 
 			$super(newValue);
-			this.parent.out(Event.update(this.index, newValue, oldValue));
+			this.parent.out(Event.update(this.index, newValue));
 
 			this.parent.markReady(false);
 		}
@@ -792,7 +792,7 @@ var List = Fume.List = clutility(Stream, {
 
 	stop : function($super) {
 		this.clear();
-		this.lengthPipe.clear();
+		this.lengthPipe.stop();
 		_.forEach(this.items, function(item) {
 			item.stop();
 		});
@@ -818,6 +818,173 @@ var List = Fume.List = clutility(Stream, {
 	}
 });
 
+var Dict = Fume.Dict = clutility(Stream, {
+	initialize : function($super) {
+		$super();
+		this.items = {};
+		this.futures = {};
+		this.keys = new List();
+	},
+
+	/**
+		Updates the value at the specified key. This will replace any stream which is already in there
+
+		@param {String} key - Key of the item to be updated.
+		@param {Any} value - the new value. Will be converted into a stream if necessary.
+	*/
+	set : function(key, value) {
+		var o = {}; o[key] = value;
+		return this.extend(o);
+	},
+
+	extend : function(valueObject) {
+		this.markDirty(true);
+
+		if (valueObject instanceof Dict)
+			return this.extend(valueObject.items);
+		else if (!_.isObject(valueObject))
+			throw new Error("Dict.extend expected plain Object or dict");
+		for (var key in valueObject) if (valueObject.hasOwnProperty(key)) {
+			if (!key || !_.isString(key))
+				throw new Error("Key should be a valid string, got: " + key);
+			var value = valueObject[key];
+
+			//new key
+			if (!this.items[key]) {
+				if (this.futures[key]) {
+					this.items[key] = this.futures[key];
+					delete this.futures[key];
+					this.items[key].set(value);
+				}
+				else {
+					this.items[key] = new ChildItem(this, key, value);
+				}
+				this.out(Event.update(key, this.items[key].get()));
+				this.keys.add(key);
+			}
+
+			//existing key
+			else
+				this.items[key].set(value);
+		}
+
+		this.markDirty(false);
+		return this;
+	},
+
+	/**
+		Removes the item at the specified key
+	*/
+	remove : function(key) {
+		return this.reduce([key]);
+	},
+
+	reduce : function(keys) {
+		this.markDirty(true);
+
+		keys.forEach(function(key){
+			if (this.items[key]) {
+				var child = this.items[key];
+				child.observe(undefined);
+				if (child.hasObservers())
+					this.futures[key] = child;
+				else
+					child.stop();
+				delete this.items[key];
+				this.keys.remove(key);
+			}
+		}, this);
+
+		this.markReady(true);
+		return this;
+	},
+
+	/**
+		Removes all items from this Dict
+	*/
+	clear : function() {
+		if (this.length === 0)
+			return;
+
+		this.markDirty(true);
+
+		//Optimization: supress all events introduced by this:...
+		this.reduce(this.keys.toArray());
+
+		this.out(Event.clear());
+		this.keys.clear();
+
+		this.markReady(true);
+		return this;
+	},
+
+	replay : function() {
+		this.out(Event.dirty());
+		this.out(Event.clear());
+		for(var key in this.items)
+			this.out(Event.update(key, this.items[key].get()));
+		this.out(Event.ready());
+		return this;
+	},
+
+	/**
+		Returns the Stream which is stored at the specified key. The stream will be bound to the value which is
+		now or in in the future at te specified key. This means that it is possible to observe keys which are not defined yet
+
+		@param {Integer} key
+	*/
+	get : function(key) {
+		if (!key || !_.isString(key))
+			throw new Error("Key should be a valid string, got: " + key);
+		else if (this.items[key])
+			return this.items[key];
+		else if (this.futures[key])
+			return this.futures[key];
+		else
+			return this.futures[key] = new ChildItem(this, key, undefined);
+	},
+
+	/*
+		Returns a stream of booleans that indicates whether the specified key is in use
+	 */
+	has : function(key) {
+		return this.keys.contains(key);
+	},
+
+	toObject : function() {
+		var res = {};
+		for (var key in this.items)
+			res[key] = this.items[key].get().value;
+		return res;
+	},
+
+	stop : function($super) {
+		this.clear();
+		this.keys.clear();
+		$super();
+	},
+
+	markDirty : function(includeKeys) {
+		this.out(Event.dirty());
+		if (includeKeys)
+			this.keys.markDirty(true);
+		return this;
+	},
+
+	markReady : function(includeKeys) {
+		this.out(Event.ready());
+		if (includeKeys)
+			this.keys.markReady(true);
+		return this;
+	},
+
+	toString : function() {
+		return "{" + this.keys.map(function(key){
+			return key + ": " + this.items[key].get().value;
+		}, this).join(",") + "}";
+	}
+});
+
 Stream.fromValue = function(value) {
 	if (value instanceof Stream)
 		return value;
@@ -825,6 +992,11 @@ Stream.fromValue = function(value) {
 		var l = new List();
 		l.addAll(value);
 		return l;
+	}
+	if (_.isObject(value)) {
+		var d = new Dict();
+		d.extend(value);
+		return d;
 	}
 
 	return new Constant(value); //TODO: list, record, error, function...

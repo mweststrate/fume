@@ -256,3 +256,28 @@ exports.listMultiInsert = function(test) {
 	]);
 	test.done();
 };
+
+exports.testDict = function(test) {
+	var d = new F.Dict();
+
+	var b = new F.ValueBuffer();
+	d.get('b').subscribe(b);
+
+	d.set('a', 3);
+	d.set('b', 4);
+	d.set('d', 0);
+	d.extend({b:2, c:1});
+
+	var c = new F.ValueBuffer();
+	d.get('c').subscribe(c);
+
+	d.remove('a');
+
+	test.deepEqual(d.keys.toArray().sort(),['b','c','d']);
+	test.deepEqual(d.toObject(), { b: 2, c: 1, d: 0});
+
+	test.deepEqual(c.buffer, [1]);
+	test.deepEqual(b.buffer, [undefined, 4, 2]);
+
+	test.done();
+};
