@@ -523,15 +523,72 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 	}
 });
 
+var Expression = Fume.Expression = clutility(Relay, {
+	closure : null,
+	inputStreams : null,
+	initialize : function($super, streams) {
+		this.inputStreams = _.map(streams, Stream.fromValue);
+
+	},
+	setClosure : function(closure) {
+		if (this.closure)
+			throw "Closure already set";
+		_.forEach(this.inputStreams, function(stream) {
+			if (stream.setClosure)
+				stream.setClosure(closure);
+		});
+	}
+});
+
+Fume.Let = clutility(Relay, {
+	initialize : function($super, varname, value, expression) {
+		this.varname = varname;
+		this.value = value;
+		this.expression = expression;
+		$super(expression);
+	},
+	setClosure : function(closure) {
+		this.closure = closure;
+		this.value.setClosure && value.setClosure(closure);
+		this.expression.setClosure && this.expression.setClosure(this);
+	},
+	resolve : function(varname) {
+		if (this.varname == varname)
+			return this.value;
+		else
+			return this.closure ? this.closure.resolve(varname) : new FumeError("Undefined: " + varname, "Variable with name '" + varname + "' is not in scope");
+	}
+});
+
+Fume.Get = clutility(Relay, {
+	hasClosure : false,
+	initialize : function($super, varname) {
+		this.varname = varname;
+		$super();
+	},
+	setClosure : function(closure) {
+		this.hasClosure = true;
+		this.observe(closure.resolve(this.varname));
+		this.out(Event.ready()); //to those already listening...
+	},
+	replay : function($super) {
+		if (!this.hasClosure)
+			this.out(Event.dirty());
+		else
+			$super();
+	}
+});
+
 /**
 	A primitve transformer takes a function which accepts native JS values and a bunch of streams.
 	Based on the merge of the streams the function will be applied, and the return value of the function will be emitted.
 */
-var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
+var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Expression, {
 	initialize : function($super, func, streams) {
 		var self = this;
 		this.simpleFunc = func;
 		this.latestEvent = null;
+		this.streams = streams;
 
 		$super(new LatestEventMerger(streams), null);
 	},
@@ -543,6 +600,11 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
 		this.out(Event.dirty());
 		this.out(this.latestEvent);
 		this.out(Event.ready());
+	},
+	setClosure : function(closure) {
+		this.streams.forEach(function(stream) {
+			stream.setClosure && stream.setClosure(closure);
+		});
 	}
 });
 
@@ -1023,6 +1085,8 @@ Fume.ValueBuffer = clutility({
 	in : function(x) {
 		if (x.isValue())
 			this.buffer.push(x.value);
+		else if (x.isError())
+			this.buffer.push(x);
 	},
 	reset : function() {
 		this.buffer = [];
