@@ -71,7 +71,7 @@ val BankAccount = {
 		transactions.filter(t => t.from = this).map(t.amount).sum()
 }
 
-val tarzan = new BankAccount();
+val tarzan = new BankAccount(); 
 var jane = new BankAccount();
 val bankTotal = tarzan.balance + jane.balance
 
@@ -94,3 +94,7 @@ transactions.add({ from : tarzan, to: jane, amount: 2})
 //prints 162
 //prints 230
 ```
+ 
+About copy: 
+- expressions are duplicated, constants and function (including closure) are final and not copied
+- 

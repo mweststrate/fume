@@ -999,7 +999,15 @@ Stream.fromValue = function(value) {
 		return d;
 	}
 
-	return new Constant(value); //TODO: list, record, error, function...
+	return new Constant(value); //TODO: error, function...
+};
+
+Stream.asDict = function(stream) { //Or Dict.fromStream..
+	//TODO:
+};
+
+Stream.asList = function(stream) { //Or List.fromStream..
+	//TODO:
 };
 
 Fume.multiply = function(left, right) {
