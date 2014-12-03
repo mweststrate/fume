@@ -525,23 +525,6 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 	}
 });
 
-var Expression = Fume.Expression = clutility(Relay, {
-	closure : null,
-	inputStreams : null,
-	initialize : function($super, streams) {
-		this.inputStreams = _.map(streams, Stream.fromValue);
-		$super();
-	},
-	setClosure : function(closure) {
-		if (this.closure)
-			throw "Closure already set";
-		_.forEach(this.inputStreams, function(stream) {
-			if (stream.setClosure)
-				stream.setClosure(closure);
-		});
-	}
-});
-
 Fume.Let = clutility(Relay, {
 	initialize : function($super, varname, value, expression) {
 		this.varname = varname;
@@ -600,8 +583,10 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
 	},
 	replay : function() {
 		this.out(Event.dirty());
-		this.out(this.latestEvent);
-		this.out(Event.ready());
+		if (this.latestEvent) {
+			this.out(this.latestEvent);
+			this.out(Event.ready());
+		}
 	},
 	setClosure : function(closure) {
 		this.streams.forEach(function(stream) {
