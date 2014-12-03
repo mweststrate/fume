@@ -502,8 +502,10 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 	},
 	replay : function() {
 		this.out(Event.dirty());
-		this.out(this.statesToEvent(this.inputStates));
-		this.out(Event.ready());
+		if (this.inputDirtyCount == 0) {
+			this.out(this.statesToEvent(this.inputStates));
+			this.out(Event.ready());
+		}
 	},
 	statesToEvent : function(states) {
 		var values = [];
@@ -528,7 +530,7 @@ var Expression = Fume.Expression = clutility(Relay, {
 	inputStreams : null,
 	initialize : function($super, streams) {
 		this.inputStreams = _.map(streams, Stream.fromValue);
-
+		$super();
 	},
 	setClosure : function(closure) {
 		if (this.closure)
@@ -583,7 +585,7 @@ Fume.Get = clutility(Relay, {
 	A primitve transformer takes a function which accepts native JS values and a bunch of streams.
 	Based on the merge of the streams the function will be applied, and the return value of the function will be emitted.
 */
-var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Expression, {
+var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
 	initialize : function($super, func, streams) {
 		var self = this;
 		this.simpleFunc = func;

@@ -64,7 +64,7 @@ exports.testLetGetVarMul = function(test) {
 	x.subscribe(e);
 
 	y.observe(6);
-	test.deepEqual(b.buffer, [5,6]);
+	test.deepEqual(b.buffer, [25,36]);
 	test.deepEqual(e.buffer, ["DIRTY", "VALUE", "READY", "DIRTY", "VALUE", "READY"]);
 	test.done();
 };
