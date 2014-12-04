@@ -50,6 +50,7 @@ exports.testObservable2 = function(test) {
 };
 
 exports.testRelay1 = function(test) {
+	debugger;
 	var b = new Fume.ValueBuffer();
 	var p = new Fume.Relay(3);
 	var s1 = p.subscribe(b);

@@ -158,9 +158,12 @@ var Stream = Fume.Stream = clutility({
 		On subscribing, the current state of this stream can be pushed to the observable by invoking the `replay` function.
 
 		@param {Observer} observer - Observer object that will receive the events. It is allowed to pass in a function as well.
+		@param {any} ...boundArgs -  events that will passed with an 'in' call to the observer
 		@returns {Disposable} - disposable object. Call the @see Fume.Disposable#dispose function to stop listening to this observer
 	*/
-	subscribe : function(observer) {
+	subscribe : function(observer, boundArgs) {
+		boundArgs = _.tail(arguments, 1);
+
 		if (this.isStopped)
 			fail(this + ": cannot perform 'subscribe'; already stopped.");
 
@@ -170,7 +173,7 @@ var Stream = Fume.Stream = clutility({
 		this.replayForObserver(observer);
 
 		this.observersIdx += 1;
-		this.observers[this.observersIdx] = observer;
+		this.observers[this.observersIdx] = { observer: observer, args : boundArgs };
 
 		var observing = this;
 		return {
@@ -220,7 +223,7 @@ var Stream = Fume.Stream = clutility({
 	 */
 	replayForObserver : function(observer) {
 		var observers = this.observers;
-		this.observers = { tmp : observer };
+		this.observers = { tmp : { observer : observer, args : [] } };
 		this.replay();
 		this.observers = observers;
 	},
@@ -238,8 +241,10 @@ var Stream = Fume.Stream = clutility({
 
 		if (this.isStopped)
 			fail(this + ": cannot perform 'next'; already stopped");
-		for(var key in this.observers)
-			this.observers[key].in(value);
+		for(var key in this.observers) {
+			var o = this.observers[key];
+			o.observer.in.apply(o.observer, [value].concat(o.args));
+		}
 	},
 
 	log : function() {
@@ -285,7 +290,7 @@ var Observer = Fume.Observer = clutility({
 	/**
 		@param {Event} value - event that is being received by this observer.
 	*/
-	in : function(value) {
+	in : function(value, boundArgs) {
 		//Just a stub
 	}
 });
@@ -396,66 +401,73 @@ var Transformer = Fume.Transformer = clutility(Stream, {
 });
 
 /**
-	A relay is a stream that observes another stream. The stream which it is observing might change
-	over time, by using the `observe` method.
+	A Relay is a stream that observes other streams. The streams which it is observing might change. The default implementation just passes on all incoming events to the output stream.
+
+	over time, by using the `observe` method, the set of streams the Relay listens to might be altered
+
+	when events occur in one of the input streams, these are received in the `in` method, (which can be overriden). The in method will receive the event and an streamIndex parameter, to indicate form which stream the event was received.
 
 	@class
 */
 var Relay = Fume.Relay = clutility(Stream, {
 
-	initialize : function($super, stream){
+	initialize : function($super, streams){
 		$super();
-		this.dirtyCount = 0;
-		this.isSwitchingObserver = false;
+
+		this.isSwitchingObservers = false;
 		this.cycleDetected = false;
 
-		this.observe(stream);
+		this.inputStreams = [];
+		this.subscriptions = [];
+		this.observe(streams);
 	},
 
-	in : function(event) {
-		if (!this.hasObservers()) {
-			//empty block
-		}
-		else if (event.isStop())
-			this.stop();
-		else
-			this.out(event);
+	in : function(event, streamIndex) {
+		this.out(event);
 	},
 
 	replay : function() {
-		if (this.isSwitchingObserver)
+		if (this.isSwitchingObservers)
 			this.cycleDetected = true;
 		else
-			this.observing.replayForObserver(this);
+			_.forEach(this.inputStreams, function(stream) {
+				stream.replayForObserver(this);
+			}, this);
 	},
 
-	observe : function(stream) {
+	observe : function(streams) {
+		if (!_.isArray(streams))
+			streams = [streams];
+
 		if (this.isStopped)
 			fail(this + ": cannot perform 'observe', already stopped");
 
-		stream = Stream.fromValue(stream);
-		if (stream !== this.observing && !Constant.equals(stream, this.observing)) {
-			this.isSwitchingObserver = true;
-			if (this.subscription)
-				this.subscription.dispose();
+		streams = _.map(streams, Stream.fromValue);
 
-			this.observing = stream;
-			this.subscription = stream.subscribe(this);
-
-			if (this.cycleDetected) {
-				this.cycleDetected = false;
-				this.observe(new FumeError("cycle_detected", "Circular reference detected in '" + this.toString() + "'"));
-			}
-			this.isSwitchingObserver = false;
+		//check whether none of the input streams were changed
+		if (streams.length === this.inputStreams.length && _.every(this.inputStreams, function(value, index) {
+			return streams[index] === value || Constant.equals(streams[index], value);
+		})) {
+			return;
 		}
+
+		this.isSwitchingObservers = true;
+		_.forEach(this.subscriptions, function(sub) { sub.dispose(); });
+
+		this.inputStreams = streams;
+		this.subscriptions = _.map(streams, function(stream, index){ return stream.subscribe(this, index);}, this);
+
+		if (this.cycleDetected) {
+			this.cycleDetected = false;
+			this.observe(new FumeError("cycle_detected", "Circular reference detected in '" + this.toString() + "'"));
+		}
+		this.isSwitchingObservers = false;
 	},
 
 	stop : function($super) {
 		$super();
-		if (this.subscription) {
-			this.subscription.dispose();
-			this.subscription = null;
-		}
+		_.forEach(this.subscriptions, function(sub) { sub.dispose(); });
+		this.subscriptions = [];
 	}
 });
 
@@ -685,10 +697,10 @@ var ChildItem = clutility(Relay, {
 		this.observe(newValue);
 	},
 	get : function() {
-		return this.observing;
+		return this.inputStreams[0];
 	},
 	toString : function() {
-		return this.index + ":" + this.observing.toString();
+		return this.index + ":" + this.inputStreams[0].toString();
 	}
 });
 
