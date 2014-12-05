@@ -170,7 +170,7 @@ var Stream = Fume.Stream = clutility({
 		if (typeof observer === "function")
 			observer = new AnonymousObserver(observer);
 
-		this.replayForObserver(observer);
+		this.replayForObserver(observer, boundArgs);
 
 		this.observersIdx += 1;
 		this.observers[this.observersIdx] = { observer: observer, args : boundArgs };
@@ -221,9 +221,9 @@ var Stream = Fume.Stream = clutility({
 	/**
 	 * Replays this stream for a specific observer only
 	 */
-	replayForObserver : function(observer) {
+	replayForObserver : function(observer, boundArgs) {
 		var observers = this.observers;
-		this.observers = { tmp : { observer : observer, args : [] } };
+		this.observers = { tmp : { observer : observer, args : boundArgs } };
 		this.replay();
 		this.observers = observers;
 	},
@@ -430,8 +430,8 @@ var Relay = Fume.Relay = clutility(Stream, {
 		if (this.isSwitchingObservers)
 			this.cycleDetected = true;
 		else
-			_.forEach(this.inputStreams, function(stream) {
-				stream.replayForObserver(this);
+			_.forEach(this.inputStreams, function(stream, i) {
+				stream.replayForObserver(this, i);
 			}, this);
 	},
 
@@ -465,9 +465,9 @@ var Relay = Fume.Relay = clutility(Stream, {
 	},
 
 	stop : function($super) {
-		$super();
 		_.forEach(this.subscriptions, function(sub) { sub.dispose(); });
 		this.subscriptions = [];
+		$super();
 	}
 });
 
@@ -477,18 +477,13 @@ var Relay = Fume.Relay = clutility(Stream, {
 
 	@class
 */
-var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
+var LatestEventMerger = Fume.LatestEventMerger = clutility(Relay, {
 	initialize : function($super, streams) {
-		$super();
-		this.inputStreams = _.map(streams, Stream.fromValue);
 		this.inputDirtyCount = 0;
-		this.inputStates = []; //last event per input
-
-		this.inputObservers = _.map(this.inputStreams, function(stream, idx) {
-			return new DisposableObserver(stream,  _.bind(this.in, this, idx));
-		}, this);
+		this.inputStates = new Array(streams.length);
+		$super(streams);
 	},
-	in : function(inputIndex, event) {
+	in : function(event, inputIndex) {
 		if (event.isStop())
 			this.stop();
 		else if (event.isDirty()) {
@@ -500,9 +495,9 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 			this.inputDirtyCount -= 1;
 
 			/*
-				if all inputs are satisfied, apply the process function
+				if all inputs are satisfied, and all streams have a value, apply the process function
 			*/
-			if (this.inputDirtyCount === 0) {
+			if (this.allStreamsReady()) {
 				this.out(this.statesToEvent(this.inputStates));
 				this.out(event);
 			}
@@ -514,10 +509,13 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 	},
 	replay : function() {
 		this.out(Event.dirty());
-		if (this.inputDirtyCount == 0) {
+		if (this.allStreamsReady()) {
 			this.out(this.statesToEvent(this.inputStates));
 			this.out(Event.ready());
 		}
+	},
+	allStreamsReady : function() {
+		return this.inputDirtyCount === 0 && _.every(this.inputStates, function(e) { return !!e });
 	},
 	statesToEvent : function(states) {
 		var values = [];
@@ -528,12 +526,6 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Stream, {
 				values.push(states[i].value);
 		}
 		return Event.value(values);
-	},
-	stop : function($super) {
-		_.forEach(this.inputObservers, function(observer) {
-			observer.dispose();
-		});
-		$super();
 	}
 });
 
