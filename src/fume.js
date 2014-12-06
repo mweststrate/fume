@@ -351,56 +351,6 @@ var DisposableObserver = Fume.DisposableObserver = clutility(AnonymousObserver, 
 });
 
 /**
-	Transformer transforms one stream into another stream, by passing Events trough the transform
-	function.
-
-	The transform function should have the signature transform(Observer, Event)
-
-	@class
-*/
-var Transformer = Fume.Transformer = clutility(Stream, {
-
-	initialize : function($super, stream, transformFunction){
-		$super();
-
-		if (transformFunction)
-			this.transform = transformFunction;
-
-		stream = Stream.fromValue(stream);
-		this.observing = stream;
-		this.subscription = stream.subscribe(this);
-	},
-
-	in : function(event) {
-		if (event.isStop())
-			this.stop();
-		else if (event.isDirty() || event.isReady())
-			this.out(event);
-		else
-			this.transform(event);
-	},
-
-	replay : function() {
-		this.out(Event.dirty());
-		this.observing.replayForObserver(this);
-		this.out(Event.ready());
-	},
-
-	transform : function(event) {
-		//stub implementation, just pass in the events
-		this.out(event);
-	},
-
-	stop : function($super) {
-		$super();
-		if (this.subscription) {
-			this.subscription.dispose();
-			this.subscription = null;
-		}
-	}
-});
-
-/**
 	A Relay is a stream that observes other streams. The streams which it is observing might change. The default implementation just passes on all incoming events to the output stream.
 
 	over time, by using the `observe` method, the set of streams the Relay listens to might be altered
@@ -515,7 +465,7 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Relay, {
 		}
 	},
 	allStreamsReady : function() {
-		return this.inputDirtyCount === 0 && _.every(this.inputStates, function(e) { return !!e });
+		return this.inputDirtyCount === 0 && _.every(this.inputStates, function(e) { return !!e; });
 	},
 	statesToEvent : function(states) {
 		var values = [];
@@ -528,6 +478,34 @@ var LatestEventMerger = Fume.LatestEventMerger = clutility(Relay, {
 		return Event.value(values);
 	}
 });
+
+/**
+ * Transform a stream into a new stream using a transform function. The transform function will receive as first argument
+ * a sink which can be used to send events.
+ *
+ * The events stop, dirty and ready are handled automatically; stop will stop this stream as well, and dirty and ready will be pushed downstream
+ *
+ * For example the following example duplicates each insert event.
+ *
+ * stream.transform(function(sink, event) {
+ *   	sink(event);
+ * 		if (!event.isInsert())
+ *   		sink(event);
+ * });
+ */
+Stream.prototype.transform = function(func) {
+	var relay = new Relay(this);
+	var sink = relay.out.bind(relay);
+	relay.in = function(event) {
+		if (event.isStop())
+			this.stop();
+		else if (event.isDirty() || event.isReady())
+			this.out(event);
+		else
+			func(sink, event);
+	};
+	return relay;
+};
 
 Fume.Let = clutility(Relay, {
 	initialize : function($super, varname, value, expression) {
@@ -572,18 +550,18 @@ Fume.Get = clutility(Relay, {
 	A primitve transformer takes a function which accepts native JS values and a bunch of streams.
 	Based on the merge of the streams the function will be applied, and the return value of the function will be emitted.
 */
-var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Transformer, {
+var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Relay, {
 	initialize : function($super, func, streams) {
 		var self = this;
 		this.simpleFunc = func;
 		this.latestEvent = null;
 		this.streams = streams;
+		var self = this;
 
-		$super(new LatestEventMerger(streams), null);
-	},
-	transform : function(event) {
-		var args = event.value;
-		this.out(this.latestEvent = Event.value(this.simpleFunc.apply(this, args)));
+		$super(new LatestEventMerger(streams).transform(function(sink, event) {
+			var args = event.value;
+			sink(self.latestEvent = Event.value(self.simpleFunc.apply(this, args)));
+		}));
 	},
 	replay : function() {
 		this.out(Event.dirty());
