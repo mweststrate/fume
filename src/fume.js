@@ -519,6 +519,7 @@ var Closure = Fume.Closure = clutility({
 		this.pending = {};
 		this.provides = {};
 		this.parent = null;
+		setImmediate(this.resolvePendingVars.bind(this));
 	},
 	demand : function(varname, resolver) {
 		if (this.provides[varname])
@@ -547,6 +548,10 @@ var Closure = Fume.Closure = clutility({
 		for (var varname in this.pending) this.pending[varname].forEach(function(resolver) {
 			parent.demand(varname, resolver);
 		});
+	},
+	resolvePendingVars : function() {
+		for (var key in this.pending)
+			this.resolve(key, new FumeError('Undefined: ' + key, 'Variable with name \'' + key + '\' is not in scope' ));
 	}
 });
 

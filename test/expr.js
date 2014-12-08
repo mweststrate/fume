@@ -21,11 +21,13 @@ exports.testLetGetFail = function(test) {
 	var e = new F.EventTypeBuffer();
 	x.subscribe(b);
 	x.subscribe(e);
-	test.deepEqual(b.buffer, [{ type: 'ERROR',
-    	code: 'Undefined: y',
-    	error: 'Variable with name \'y\' is not in scope' } ]);
-	test.deepEqual(e.buffer, ["DIRTY", "DIRTY", "ERROR", "READY", "READY"]);
-	test.done();
+	setTimeout(function() {
+		test.deepEqual(b.buffer, [{ type: 'ERROR',
+	    	code: 'Undefined: y',
+	    	error: 'Variable with name \'y\' is not in scope' } ]);
+		test.deepEqual(e.buffer, ["DIRTY", "DIRTY", "ERROR", "READY", "READY"]);
+		test.done();
+	}, 100);
 };
 
 
