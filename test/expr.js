@@ -9,9 +9,8 @@ exports.testLetGet = function(test) {
 	var e = new F.EventTypeBuffer();
 	x.subscribe(b);
 	x.subscribe(e);
-	x.setClosure(null); //kicks off evaluation
 	test.deepEqual(b.buffer, [3]);
-	test.deepEqual(e.buffer, ["DIRTY", "DIRTY", "VALUE", "READY", "READY"]);
+	test.deepEqual(e.buffer, ["DIRTY", "VALUE", "READY"]);
 	test.done();
 };
 
@@ -22,7 +21,6 @@ exports.testLetGetFail = function(test) {
 	var e = new F.EventTypeBuffer();
 	x.subscribe(b);
 	x.subscribe(e);
-	x.setClosure(null); //kicks off evaluation
 	test.deepEqual(b.buffer, [{ type: 'ERROR',
     	code: 'Undefined: y',
     	error: 'Variable with name \'y\' is not in scope' } ]);
@@ -37,7 +35,6 @@ exports.testLetGetVar = function(test) {
 	var b = new Fume.ValueBuffer();
 	var e = new F.EventTypeBuffer();
 
-	x.setClosure(null); //kicks off evaluation
 	y.observe(4);
 
 	y.observe(5);
@@ -56,7 +53,6 @@ exports.testLetGetVarMul = function(test) {
 	var b = new Fume.ValueBuffer();
 	var e = new F.EventTypeBuffer();
 
-	x.setClosure(null); //kicks off evaluation
 	y.observe(4);
 
 	y.observe(5);

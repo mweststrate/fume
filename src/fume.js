@@ -417,7 +417,14 @@ var Relay = Fume.Relay = clutility(Stream, {
 	stop : function($super) {
 		_.forEach(this.subscriptions, function(sub) { sub.dispose(); });
 		this.subscriptions = [];
+		this.inputStreams = [];
 		$super();
+	},
+
+	setClosure : function(closure) {
+		this.inputStreams.forEach(function(stream) {
+			stream.setClosure && stream.setClosure(closure);
+		});
 	}
 });
 
@@ -507,42 +514,76 @@ Stream.prototype.transform = function(func) {
 	return relay;
 };
 
+var Closure = Fume.Closure = clutility({
+	initialize : function() {
+		this.pending = {};
+		this.provides = {};
+		this.parent = null;
+	},
+	demand : function(varname, resolver) {
+		if (this.provides[varname])
+			resolver(this.provides[varname]);
+		else if (this.parent)
+			this.parent.demand(varname, resolver);
+		else {
+			if (!this.pending[varname])
+				this.pending[varname] = [];
+			this.pending[varname].push(resolver);
+		}
+	},
+	resolve : function(varname, value) {
+		if (this.provides[varname])
+			throw varname + " already defined";
+		this.provides[varname] = value;
+		if (this.pending[varname]) this.pending[varname].forEach(function(f) {
+			f(value);
+		});
+		delete this.pending[varname];
+	},
+	setParent : function(parent) {
+		if (this.parent)
+			throw ("parent already defined");
+		this.parent = parent;
+		for (var varname in this.pending) this.pending[varname].forEach(function(resolver) {
+			parent.demand(varname, resolver);
+		});
+	}
+});
+
 Fume.Let = clutility(Relay, {
 	initialize : function($super, varname, value, expression) {
 		this.varname = varname;
 		this.value = value;
 		this.expression = expression;
+		this.closure = new Closure();
+		this.closure.resolve(varname, value);
+		expression.setClosure && expression.setClosure(this.closure);
 		$super(expression);
 	},
 	setClosure : function(closure) {
-		this.closure = closure;
-		this.value.setClosure && value.setClosure(closure);
-		this.expression.setClosure && this.expression.setClosure(this);
-	},
-	resolve : function(varname) {
-		if (this.varname == varname)
-			return this.value;
-		else
-			return this.closure ? this.closure.resolve(varname) : new FumeError("Undefined: " + varname, "Variable with name '" + varname + "' is not in scope");
+		this.value.setClosure && this.value.setClosure(closure);
+		this.closure.setParent(closure);
 	}
 });
 
 Fume.Get = clutility(Relay, {
-	hasClosure : false,
+	resolved : false,
 	initialize : function($super, varname) {
 		this.varname = varname;
 		$super();
 	},
-	setClosure : function(closure) {
-		this.hasClosure = true;
-		this.observe(closure.resolve(this.varname));
-		this.out(Event.ready()); //to those already listening...
-	},
 	replay : function($super) {
-		if (!this.hasClosure)
+		if (!this.resolved)
 			this.out(Event.dirty());
 		else
 			$super();
+	},
+	setClosure : function(closure) {
+		closure.demand(this.varname, function(value) {
+			this.resolved = true;
+			this.observe(value);
+			this.out(Event.ready());
+		}.bind(this));
 	}
 });
 
