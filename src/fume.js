@@ -589,6 +589,9 @@ Fume.Get = clutility(Relay, {
 			this.observe(value);
 			this.out(Event.ready());
 		}.bind(this));
+	},
+	clone : function() {
+		return new Fume.Get(this.varname);
 	}
 });
 
@@ -620,6 +623,47 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Relay, {
 		this.streams.forEach(function(stream) {
 			stream.setClosure && stream.setClosure(closure);
 		});
+	}
+});
+
+var FumeFunction = Fume.Function = clutility(Fume.Stream, {
+	initialize : function($super, paramNames, expr) {
+		$super();
+		this.paramNames = paramNames;
+		this.expr = expr;
+	},
+	replay : function() {
+		this.out(Event.dirty());
+		this.out(Event.value(this)); //mwe: eehhh correct?
+		this.out(Event.ready());
+	},
+	toString : function() {
+		return "FumeFunction(" + this.paramNames.join(",") + ")";
+	}
+});
+
+var Call = Fume.FunctionCall = clutility(Relay, {
+	initialize : function($super, funcStream, args) {
+		$super();
+		this.funcSubscription = funcStream.subscribe(function(event) {
+			if (event.isDirty() || event.isReady())
+				this.out(event);
+			else if (event.isValue()) {
+				var func = event.value;
+				var closure = new Closure();
+				func.paramNames.forEach(function(param, idx) {
+					closure.resolve(param, args[idx]);
+				});
+				closure.setParent(func.closure);
+				var exprClone = func.expr.clone();
+				exprClone.setClosure(closure);
+				this.observe([exprClone]);
+			}
+		}.bind(this));
+	},
+	stop : function($super) {
+		$super();
+		this.funcSubscription.dispose();
 	}
 });
 

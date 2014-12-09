@@ -66,3 +66,18 @@ exports.testLetGetVarMul = function(test) {
 	test.deepEqual(e.buffer, ["DIRTY", "VALUE", "READY", "DIRTY", "VALUE", "READY"]);
 	test.done();
 };
+
+exports.testFunction = function(test) {
+	debugger;
+	var f = new Fume.Function(["x"], new Fume.Get("x"));
+	var y = new Fume.FunctionCall(f, [new Fume.Constant(3)]);
+	var b = new Fume.ValueBuffer();
+	var e = new F.EventTypeBuffer();
+
+	y.subscribe(b);
+	y.subscribe(e);
+
+	test.deepEqual(b.buffer, [3]);
+	test.deepEqual(e.buffer, ["DIRTY", "VALUE", "READY"]);
+	test.done();
+};
