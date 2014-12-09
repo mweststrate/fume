@@ -163,6 +163,7 @@ exports.testStuff = function(test) {
 };
 
 exports.testMultiply = function(test) {
+	debugger;
 	var b = new Fume.ValueBuffer();
 
 	// testing basic function and atomicity

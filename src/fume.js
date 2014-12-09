@@ -280,6 +280,40 @@ var Stream = Fume.Stream = clutility({
 	}
 });
 
+var Streams = Fume.Streams = clutility({
+	initialize : function(streams) {
+		this.streams = streams;
+	},
+	/**
+	 * Merges the streams into a single stream, on each event in the result stream
+	 * the 'subStreamIndex' property will be set, but the events will not be further processed
+	 * @type {[type]}
+	 */
+	merge : function() {
+		return new Relay(this.streams);
+	},
+	/**
+	 * Join merges streams. But in contrast to the normal merge, it will combine the latest states of each individual stream into 
+	 * a single array of values. 
+	 *
+	 * Dict or list streams are not supported by this event
+	 * @type {[type]}
+	 */
+	join : function() {
+		return new LatestEventMerger(this.streams);
+	}
+});
+
+Fume.Streams.of = function(streams) {
+	if (arguments.length > 1) {
+		streams = [];
+		for (var i = 0; i < arguments.length; i++)
+			streams.push(arguments[i]);
+	}
+	return new Streams(streams);
+};
+
+
 /**
 Class / interface. An item that listens to a stream. For every event that is being send through a stream's `out` method,
 the `in` method of this observer is invoked
@@ -514,6 +548,23 @@ Stream.prototype.transform = function(func) {
 	return relay;
 };
 
+/**
+ * joins a set of streams and passes the combined values as arguments into a javascript function. The return value of the function 
+ * will pushed in the returned stream. 
+ * 
+ * @type {[type]}
+ */
+Streams.prototype.simpleTransform = function(func) {
+	return new PrimitiveTransformer(func, this.streams);
+};
+
+Fume.declareBinaryFunction = function(name, operator) {
+	var f = new Function("a","b", "return a " + operator + "b;");
+	Fume[name] = function(left, right) {
+		return Streams.of(left, right).simpleTransform(f);
+	};
+};
+
 var Closure = Fume.Closure = clutility({
 	initialize : function() {
 		this.pending = {};
@@ -607,7 +658,7 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Relay, {
 		this.streams = streams;
 		var self = this;
 
-		$super(new LatestEventMerger(streams).transform(function(sink, event) {
+		$super(Streams.of(streams).join().transform(function(sink, event) {
 			var args = event.value;
 			sink(self.latestEvent = Event.value(self.simpleFunc.apply(this, args)));
 		}));
@@ -618,11 +669,6 @@ var PrimitiveTransformer = Fume.PrimitiveTransformer = clutility(Relay, {
 			this.out(this.latestEvent);
 			this.out(Event.ready());
 		}
-	},
-	setClosure : function(closure) {
-		this.streams.forEach(function(stream) {
-			stream.setClosure && stream.setClosure(closure);
-		});
 	}
 });
 
@@ -1131,11 +1177,7 @@ Stream.asList = function(stream) { //Or List.fromStream..
 	//TODO:
 };
 
-Fume.multiply = function(left, right) {
-	return new PrimitiveTransformer(function(x, y) {
-		return x * y;
-	}, [left, right]);
-};
+Fume.declareBinaryFunction("multiply", "*");
 
 Fume.ValueBuffer = clutility({
 	initialize : function() {
