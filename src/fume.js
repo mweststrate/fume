@@ -293,8 +293,8 @@ var Streams = Fume.Streams = clutility({
 		return new Relay(this.streams);
 	},
 	/**
-	 * Join merges streams. But in contrast to the normal merge, it will combine the latest states of each individual stream into 
-	 * a single array of values. 
+	 * Join merges streams. But in contrast to the normal merge, it will combine the latest states of each individual stream into
+	 * a single array of values.
 	 *
 	 * Dict or list streams are not supported by this event
 	 * @type {[type]}
@@ -305,12 +305,13 @@ var Streams = Fume.Streams = clutility({
 });
 
 Fume.Streams.of = function(streams) {
-	if (arguments.length > 1) {
-		streams = [];
-		for (var i = 0; i < arguments.length; i++)
-			streams.push(arguments[i]);
-	}
-	return new Streams(streams);
+	if (arguments.length === 1 && _.isArray(streams))
+		return new Streams(streams);
+
+	ar = [];
+	for (var i = 0; i < arguments.length; i++)
+		ar.push(arguments[i]);
+	return new Streams(ar);
 };
 
 
@@ -549,9 +550,9 @@ Stream.prototype.transform = function(func) {
 };
 
 /**
- * joins a set of streams and passes the combined values as arguments into a javascript function. The return value of the function 
- * will pushed in the returned stream. 
- * 
+ * joins a set of streams and passes the combined values as arguments into a javascript function. The return value of the function
+ * will pushed in the returned stream.
+ *
  * @type {[type]}
  */
 Streams.prototype.simpleTransform = function(func) {
