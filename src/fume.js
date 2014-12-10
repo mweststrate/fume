@@ -817,6 +817,7 @@ var ChildItem = clutility(Relay, {
 	toString : function() {
 		return this.index + ":" + this.inputStreams[0].toString();
 	}
+	//TODO: make sure ChildItem is never stopped / destroyed as long as the parent lives, even when there are no subscribers anymore...
 });
 
 /**
@@ -1183,6 +1184,26 @@ Stream.asDict = function(stream) { //Or Dict.fromStream..
 };
 
 Stream.asList = function(stream) { //Or List.fromStream..
+	//TODO:
+};
+
+Stream.fromCallback = function(scope/*?*/, functionWithCallback, args/*...*/) {
+	//TODO:
+};
+
+Stream.fromNodeCallback = function(scope/*?*/, functionWithNodeStyleCallback, args/*...*/) {
+	//TODO:
+};
+
+Stream.fromPromise = function(thenable) {
+	//TODO:
+};
+
+Stream.fromRxStream = function(rxStream) {
+	//TODO:
+};
+
+Stream.fromBaconStream = function(baconStream) {
 	//TODO:
 };
 
