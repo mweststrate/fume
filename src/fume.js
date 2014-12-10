@@ -173,19 +173,22 @@ var Stream = Fume.Stream = clutility({
 		this.replayForObserver(observer, boundArgs);
 
 		this.observersIdx += 1;
-		this.observers[this.observersIdx] = { observer: observer, args : boundArgs };
-
-		var observing = this;
-		return {
+		var disposable = {
+			observing : this,
 			observerId : this.observersIdx,
-			isDisposed : false,
-			dispose : function(){
-				if (this.isDisposed)
-					fail();
-				this.isDisposed = true;
-				observing.unsubcribe(this);
+			dispose : function() {
+				if (this.observing) {
+					this.observing.unsubcribe(this);
+					this.cancel();
+				}
+			},
+			cancel : function() {
+				this.observing = null;
 			}
 		};
+		this.observers[this.observersIdx] = { observer: observer, args : boundArgs, disposable : disposable };
+
+		return disposable;
 	},
 
 	/**
@@ -259,8 +262,13 @@ var Stream = Fume.Stream = clutility({
 	stop : function() {
 		if (this.isStopped)
 			return;
-		if (this.hasObservers())
+		if (this.hasObservers()) {
 			this.out(Event.stop());
+			for (var key in this.observers) {
+				//make the disposable a noop, even if the consumer didn't clean up its subscript neatly (it should, after the stop)
+				this.observers[key].disposable.cancel();
+			}
+		}
 		this.isStopped = true;
 		this.observers = null;
 	},

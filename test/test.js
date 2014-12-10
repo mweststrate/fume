@@ -23,7 +23,11 @@ exports.testObservable1 = function(test) {
 	source.out(4);
 	test.equals(4, x);
 
+	debugger;
+	test.ok(sub.observing);
 	sub.dispose();
+	test.ok(!sub.observing);
+
 	test.ok(!source.hasObservers());
 	test.ok(source.isStopped);
 
